@@ -1,26 +1,33 @@
-"""Prediction service. Your webapp calls these endpoints.
+"""Cricket Realtime Predictor — combined service.
 
-Recommended live wiring:
-  frontend subscribes to the scorer SSE stream, and on every ball calls
-  GET /live/{match_id} here -> gets the current projected score / win prob.
+This ONE service serves BOTH the frontend webapp AND the prediction API, so you
+deploy a single thing to Render. Because the page and the API share the same
+origin, there are no CORS problems and no URL to configure in the frontend.
 
-Endpoints:
-  GET  /health
-  POST /predict          stateless; you send the innings timeline, get a prediction
-  GET  /live/{match_id}  server fetches the scorer API and predicts the current ball
-  POST /report           full post-match analysis from both innings' timelines
+Routes:
+  GET  /                 -> the webapp (index.html)
+  GET  /health           -> liveness check
+  POST /predict          -> stateless prediction from a timeline
+  GET  /live/{id}        -> fetch scorer + predict the current ball
+  POST /report           -> full post-match analysis
+  GET  /api/matches      -> proxy to the scorer's match list (avoids browser CORS)
 """
-import json
+import os
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from feature_builder import build_features
 import predictor
 import report as report_mod
 
-app = FastAPI(title="Cricket Realtime Predictor", version="1.0")
+# webapp/index.html sits one level up from app/
+HERE = os.path.dirname(os.path.abspath(__file__))
+WEBAPP = os.path.join(os.path.dirname(HERE), "webapp", "index.html")
+
+app = FastAPI(title="Cricket Realtime Predictor", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
 
@@ -39,16 +46,23 @@ class PredictReq(BaseModel):
     timeline: List[Ball]
 
 class ReportReq(BaseModel):
-    meta: dict                       # {match_no, venue, batting_first, second}
+    meta: dict
     innings1: List[Ball]
     innings2: List[Ball] = []
     target: Optional[int] = None
     result: Optional[str] = None
 
+# ── Frontend ──────────────────────────────────────────────────────
+@app.get("/")
+def home():
+    return FileResponse(WEBAPP)
+
+# ── Health ────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     return {"status": "ok", "models": ["projected_score", "win_prob"]}
 
+# ── Prediction API ────────────────────────────────────────────────
 @app.post("/predict")
 def predict(req: PredictReq):
     tl = [b.model_dump() for b in req.timeline]
@@ -74,6 +88,13 @@ def live(match_id: str):
                            venue=st["venue"], target=st["target"])
     out = predictor.predict(feats, st["innings"])
     out["match_id"] = match_id
+    out["runs"] = feats["total_runs"]
+    out["wkts"] = feats["total_wickets"]
+    out["balls_bowled"] = feats["balls_bowled"]
+    out["batting_team"] = st["batting_team"]
+    out["bowling_team"] = st["bowling_team"]
+    out["venue"] = st.get("venue")
+    out["status"] = (st.get("raw_score") or {}).get("status", "live")
     return out
 
 @app.post("/report")
@@ -83,3 +104,20 @@ def make_report(req: ReportReq):
                          2: [b.model_dump() for b in req.innings2]},
              "target": req.target, "result": req.result}
     return report_mod.generate_report(match)
+
+# ── Scorer proxy (so the browser only ever talks to THIS origin) ──
+@app.get("/api/matches")
+def matches_proxy():
+    import scorer_client
+    try:
+        return scorer_client.fetch_json("/api/matches")
+    except Exception as e:
+        raise HTTPException(502, f"scorer fetch failed: {e}")
+
+@app.get("/api/matches/{match_id}/score")
+def score_proxy(match_id: str):
+    import scorer_client
+    try:
+        return scorer_client.fetch_json(f"/api/matches/{match_id}/score")
+    except Exception as e:
+        raise HTTPException(502, f"scorer fetch failed: {e}")

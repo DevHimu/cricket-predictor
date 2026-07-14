@@ -188,15 +188,38 @@ button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--amber);out
 <script type="text/babel" data-presets="react">
 const {useState,useEffect,useRef} = React;
 
-/* ---- CONFIG: flip DEMO_MODE to false and set the two URLs to go live ---- */
+/* ---- CONFIG ----------------------------------------------------------------
+   This page and the prediction API are served by the SAME service, so the API
+   is same-origin: leave API_BASE as "" and the frontend calls /live, /predict,
+   /api/matches directly (no CORS, no URL to configure).
+   Set DEMO_MODE:false to switch from the baked demo to real live matches.      */
 const CONFIG = {
   DEMO_MODE: true,
-  SCORER_BASE: "https://cricket-scorer-pk3j.onrender.com",
-  PREDICTOR_BASE: "http://localhost:8000",
+  API_BASE: "",            // same origin — the service serves this page + the API
 };
+const apiGet = (path) =>
+  fetch((CONFIG.API_BASE || "") + path).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); });
 
 const DATA = window.DEMO_DATA;
 const pct = x => Math.round(x*100);
+
+/* Convert a /live API response into a timeline entry (same shape as demo data),
+   so all the existing rendering (worm, Manhattan, win bar) works unchanged. */
+function liveEntry(prev, L){
+  const isChase = L.innings === 2;
+  return {
+    inn: L.innings, bb: L.balls_bowled,
+    over: Math.round(L.balls_bowled/6*10)/10,
+    runs: L.runs, wkts: L.wkts, crr: L.crr, rrr: L.rrr,
+    need: L.runs_to_win, target: L.target,
+    bat: L.batting_team, bowl: L.bowling_team,
+    wp: isChase ? (L.win_probability ? L.win_probability[L.batting_team] : undefined) : undefined,
+    proj: !isChase ? L.projected_score : undefined,
+    rob: prev ? Math.max(L.runs - prev.runs, 0) : L.runs,
+    ex: 0,
+    w: prev ? Math.max(L.wkts - prev.wkts, 0) : L.wkts,
+  };
+}
 
 /* ---------- Worm (win-probability line) ---------- */
 function Worm({points, live}){
@@ -300,42 +323,80 @@ function RotationBar({rot}){
 
 /* ---------- Live match view ---------- */
 function LiveView({match, onBack}){
-  const tl=match.timeline;
-  const [idx,setIdx]=useState(tl.length-1); // start at end so a clicked "old" render is complete
+  const isLiveApi = match.isLive && !CONFIG.DEMO_MODE;
+  const [liveTl,setLiveTl]=useState([]);
+  const [liveErr,setLiveErr]=useState(null);
+  const [idx,setIdx]=useState(((match.timeline&&match.timeline.length)||1)-1);
   const [playing,setPlaying]=useState(false);
   const [speed,setSpeed]=useState(1);
-  const [liveMode]=useState(match.isLive);
-  useEffect(()=>{ if(match.isLive){ setIdx(Math.floor(tl.length*0.62)); setPlaying(true);} },[]);
-  useEffect(()=>{
-    if(!playing) return;
-    if(idx>=tl.length-1){ setPlaying(false); return; }
-    const t=setTimeout(()=>setIdx(i=>Math.min(i+1,tl.length-1)), 650/speed);
-    return ()=>clearTimeout(t);
-  },[playing,idx,speed]);
 
-  const cur=tl[idx];
+  // demo replay: start midway
+  useEffect(()=>{ if(match.isLive && !isLiveApi){ setIdx(Math.floor(match.timeline.length*0.62)); setPlaying(true);} },[]);
+  // demo replay: tick
+  useEffect(()=>{
+    if(isLiveApi||!playing) return;
+    if(idx>=match.timeline.length-1){ setPlaying(false); return; }
+    const t=setTimeout(()=>setIdx(i=>Math.min(i+1,match.timeline.length-1)), 650/speed);
+    return ()=>clearTimeout(t);
+  },[playing,idx,speed,isLiveApi]);
+  // live API: poll /live/:id every 2s and accumulate the timeline
+  useEffect(()=>{
+    if(!isLiveApi) return;
+    let stop=false;
+    const poll=async()=>{
+      try{
+        const L=await apiGet(`/live/${match.id}`);
+        if(stop) return;
+        if(L && L.balls_bowled!=null){
+          setLiveTl(prev=>{
+            const last=prev[prev.length-1];
+            if(last && last.bb===L.balls_bowled && last.inn===L.innings) return prev;
+            return [...prev, liveEntry(last, L)];
+          });
+        }
+        setLiveErr(null);
+        if(L && L.status==='complete') return;   // stop when match ends
+      }catch(e){ if(!stop) setLiveErr(String(e.message||e)); }
+      if(!stop) setTimeout(poll, 2000);
+    };
+    poll();
+    return ()=>{ stop=true; };
+  },[isLiveApi, match.id]);
+
+  const tl = isLiveApi ? liveTl : match.timeline;
+  if(isLiveApi && tl.length===0){
+    return <div><button className="back" onClick={onBack}>&larr; BACK</button>
+      <div className="board"><div className="venue">{match.venue||''}</div>
+      <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>
+        {liveErr ? 'Connecting to prediction service… ('+liveErr+')' : 'Waiting for the first ball…'}</p>
+      </div></div>;
+  }
+  const curIdx = isLiveApi ? tl.length-1 : idx;
+  const cur=tl[curIdx];
   const isChase=cur.inn===2;
-  const batTeam = isChase? match.teamB : match.teamA;
-  const bowlTeam= isChase? match.teamA : match.teamB;
-  const last6 = tl.slice(Math.max(0,idx-5),idx+1);
-  const wormPts = tl.filter((p,i)=> p.inn===2 && i<=idx).map(p=>p.wp);
+  const batTeam = cur.bat || (isChase? match.teamB : match.teamA);
+  const bowlTeam= cur.bowl || (isChase? match.teamA : match.teamB);
+  const target = (cur.target!=null? cur.target : match.target);
+  const last6 = tl.slice(Math.max(0,curIdx-5),curIdx+1);
+  const wormPts = tl.filter((p,i)=> p.inn===2 && i<=curIdx).map(p=>p.wp);
   const wp = isChase? cur.wp : null;
 
   return <div>
     <button className="back" onClick={onBack}>&larr; BACK</button>
+    {isLiveApi && <div style={{fontFamily:'Space Mono',fontSize:'11px',color:'var(--ball)',marginBottom:'8px',letterSpacing:'.1em'}}>● LIVE — updating every 2s{liveErr?' (reconnecting…)':''}</div>}
     <div className="board">
       <div className="venue">{match.venue}</div>
       <div className="teams">
         <div className="team bat">
           <div className="lbl">{batTeam} · batting</div>
           <div className="big num">{cur.runs}<span style={{fontSize:'26px',color:'var(--muted)'}}>/{cur.wkts}</span></div>
-          <div className="ov">{cur.over} ov · {isChase? `target ${match.target}`:'1st innings'}</div>
+          <div className="ov">{cur.over} ov · {isChase? `target ${target}`:'1st innings'}</div>
         </div>
         <div className="team chase">
           <div className="lbl">{bowlTeam} · bowling</div>
           {isChase
             ? <div className="need">need <b>{cur.need}</b> in <b>{120-cur.bb}</b></div>
-            : <div className="need mono" style={{color:'var(--muted)'}}>{match.teamB} to chase</div>}
+            : <div className="need mono" style={{color:'var(--muted)'}}>{bowlTeam} to chase</div>}
         </div>
       </div>
       <div className="rates">
@@ -350,7 +411,7 @@ function LiveView({match, onBack}){
               <div className="seg a" style={{width:pct(wp)+'%'}}>{wp>0.14&&<span>{pct(wp)}%</span>}</div>
               <div className="seg b" style={{width:pct(1-wp)+'%'}}>{(1-wp)>0.14&&<span>{pct(1-wp)}%</span>}</div>
             </div>
-            <div className="names"><span className="an">{match.teamB}</span><span className="bn">{match.teamA}</span></div>
+            <div className="names"><span className="an">{batTeam}</span><span className="bn">{bowlTeam}</span></div>
           </div>
         : <div className="proj"><span className="k">Projected final</span>
             <span className="val num">{Math.round(cur.proj)}</span>
@@ -359,24 +420,24 @@ function LiveView({match, onBack}){
       <div className="callout">
         <div className="k">Prediction</div>
         <div className="v">{isChase
-          ? `${wp>=0.5?match.teamB:match.teamA} favoured — ${pct(wp>=0.5?wp:1-wp)}% to win. ${match.teamB} need ${cur.need} off ${120-cur.bb}.`
-          : `${match.teamA} tracking toward ${Math.round(cur.proj)}. ${cur.wkts} down at ${cur.over} overs.`}</div>
+          ? `${wp>=0.5?batTeam:bowlTeam} favoured — ${pct(wp>=0.5?wp:1-wp)}% to win. ${batTeam} need ${cur.need} off ${120-cur.bb}.`
+          : `${batTeam} tracking toward ${Math.round(cur.proj)}. ${cur.wkts} down at ${cur.over} overs.`}</div>
       </div>
 
       <LastBalls balls={last6}/>
     </div>
 
-    {(isChase||wormPts.length>0) && <Worm points={wormPts} live={match.isLive&&playing}/>}
+    {(isChase||wormPts.length>0) && <Worm points={wormPts} live={isLiveApi||(match.isLive&&playing)}/>}
 
-    <Manhattan overs={oversFromTimeline(tl.slice(0,idx+1).filter(p=>p.inn===cur.inn))}
+    <Manhattan overs={oversFromTimeline(tl.slice(0,curIdx+1).filter(p=>p.inn===cur.inn))}
       title={`OVER BY OVER · ${batTeam}`}/>
 
     <div className="panelbox" style={{marginTop:14}}>
       <h3>This innings so far</h3>
-      <RotationBar rot={rotationFromTimeline(tl.slice(0,idx+1).filter(p=>p.inn===cur.inn))}/>
+      <RotationBar rot={rotationFromTimeline(tl.slice(0,curIdx+1).filter(p=>p.inn===cur.inn))}/>
     </div>
 
-    <div className="controls">
+    {!isLiveApi && <div className="controls">
       <button className="primary" onClick={()=>{ if(idx>=tl.length-1) setIdx(0); setPlaying(p=>!p);}}>
         {playing?'❚❚ PAUSE':'▶ REPLAY'}</button>
       <button onClick={()=>setIdx(i=>Math.max(0,i-1))}>◀ BALL</button>
@@ -384,7 +445,7 @@ function LiveView({match, onBack}){
       <button onClick={()=>{setPlaying(false);setIdx(tl.length-1);}}>END</button>
       <span className="speed" onClick={()=>setSpeed(s=> s===1?2:s===2?4:1)} tabIndex="0"
         role="button" style={{cursor:'pointer'}}>SPEED ×{speed}</span>
-    </div>
+    </div>}
   </div>;
 }
 
@@ -451,7 +512,12 @@ function Analysis({match, onBack}){
 }
 
 /* ---------- Home ---------- */
+/* ---------- Home ---------- */
 function Home({onOpen}){
+  return CONFIG.DEMO_MODE ? <HomeDemo onOpen={onOpen}/> : <HomeLive onOpen={onOpen}/>;
+}
+
+function HomeDemo({onOpen}){
   const live=DATA[0]; const past=DATA.slice(1);
   const midIdx=Math.floor(live.timeline.length*0.62); const c=live.timeline[midIdx];
   return <div>
@@ -471,6 +537,45 @@ function Home({onOpen}){
         <div className="vs">{m.teamA} v {m.teamB}</div>
         <div className="res">{m.result}</div>
         <div className="meta"><span>{m.venue.split(',')[0]}</span><span className="arrow">analysis →</span></div>
+      </button>)}
+    </div>
+  </div>;
+}
+
+function HomeLive({onOpen}){
+  const [matches,setMatches]=useState(null);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{
+    let stop=false;
+    const load=()=>apiGet('/api/matches')
+      .then(d=>{ if(!stop){ setMatches(Array.isArray(d)?d:(d.matches||[])); setErr(null); } })
+      .catch(e=>{ if(!stop) setErr(String(e.message||e)); });
+    load(); const iv=setInterval(load,5000);
+    return ()=>{ stop=true; clearInterval(iv); };
+  },[]);
+  const nm=m=>({ id:m.id||m._id||m.matchId,
+    teamA:(m.teams&&m.teams.A)||m.teamA||m.battingFirst||'Team A',
+    teamB:(m.teams&&m.teams.B)||m.teamB||'Team B',
+    venue:m.venue||'', status:m.status });
+  if(err) return <div className="board"><div className="venue">Could not reach the prediction service.</div>
+    <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>{err} — check the service is running at /health.</p></div>;
+  if(!matches) return <p style={{color:'var(--muted)',fontFamily:'Space Mono'}}>Loading matches…</p>;
+  const norm=matches.map(nm);
+  const liveOnes=norm.filter(m=>m.status==='live');
+  const pastOnes=norm.filter(m=>m.status==='complete');
+  return <div>
+    {liveOnes.length===0 && <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>No live match right now — start scoring one to see it here.</p>}
+    {liveOnes.map(m=>
+      <button className="livetile" key={m.id} style={{marginBottom:'12px'}} onClick={()=>onOpen({...m,isLive:true},'live')}>
+        <div className="livehead"><span className="pulse"/><span className="livelabel">LIVE NOW</span></div>
+        <div className="matchup">{m.teamA} v {m.teamB}{m.venue?' · '+m.venue.split(',')[0]:''}</div>
+        <div className="tilehint">Tap for live score and prediction →</div>
+      </button>)}
+    {pastOnes.length>0 && <div className="sec"><h2>Completed matches</h2><div className="rule"/></div>}
+    <div className="grid">
+      {pastOnes.map(m=><button className="card" key={m.id} onClick={()=>onOpen({...m,isLive:true},'live')}>
+        <div className="vs">{m.teamA} v {m.teamB}</div>
+        <div className="meta"><span>{m.venue?m.venue.split(',')[0]:''}</span><span className="arrow">view →</span></div>
       </button>)}
     </div>
   </div>;

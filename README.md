@@ -86,14 +86,8 @@ scorer URL via the `SCORER_BASE` env var (defaults to your Render URL).
   (reach target, or finish with balls+wickets left) handles them consistently in
   both labels and reports.
 
-## Stage 3 — the webapp (`webapp/`)
-`webapp/index.html` is a single self-contained page (no build step). Open it directly
-to see it working in **demo mode** — it replays real matches with actual model outputs
-baked in (a live-match tile up top, past matches below, a live win-probability "worm",
-and a post-match analysis view).
-
-Go live: edit the `CONFIG` block near the top of `index.html` — set `DEMO_MODE:false`,
-point `SCORER_BASE` at your scorer and `PREDICTOR_BASE` at this service. In live mode the
-home page lists matches from the scorer, the live view calls `GET /live/{id}` each ball,
-and the analysis view calls `POST /report`. `index_template.html` is the source (demo data
-is injected into it); regenerate with the injector if you refresh the sample data.
+## Stage 3 — the webapp (now served BY this service)
+The dashboard is served at the service root `/` — the same service that runs the
+model. Open `https://YOUR-SERVICE.onrender.com/` and it loads in demo mode. To use
+real live matches, set `DEMO_MODE:false` in `webapp/index.html` (leave `API_BASE:""`
+— it's same-origin) and redeploy. See DEPLOYMENT.md for the full guide.
