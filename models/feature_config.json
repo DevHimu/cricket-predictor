@@ -1,0 +1,141 @@
+{
+ "cat_features": [
+  "batting_team",
+  "bowling_team",
+  "venue",
+  "phase"
+ ],
+ "maps_inn1": {
+  "batting_team": {
+   "Chennai Super Kings": 1,
+   "Delhi Capitals": 2,
+   "Gujarat Titans": 3,
+   "Kolkata Knight Riders": 4,
+   "Lucknow Super Giants": 5,
+   "Mumbai Indians": 6,
+   "Punjab Kings": 7,
+   "Rajasthan Royals": 8,
+   "Royal Challengers Bengaluru": 9,
+   "Sunrisers Hyderabad": 10
+  },
+  "bowling_team": {
+   "Chennai Super Kings": 1,
+   "Delhi Capitals": 2,
+   "Gujarat Titans": 3,
+   "Kolkata Knight Riders": 4,
+   "Lucknow Super Giants": 5,
+   "Mumbai Indians": 6,
+   "Punjab Kings": 7,
+   "Rajasthan Royals": 8,
+   "Royal Challengers Bengaluru": 9,
+   "Sunrisers Hyderabad": 10
+  },
+  "venue": {
+   "Arun Jaitley Stadium, Delhi": 1,
+   "Barsapara Cricket Stadium, Guwahati": 2,
+   "Bharat Ratna Shri Atal Bihari Vajpayee Ekana Cricket Stadium, Lucknow": 3,
+   "Eden Gardens, Kolkata": 4,
+   "Himachal Pradesh Cricket Association Stadium, Dharamsala": 5,
+   "M.Chinnaswamy Stadium, Bengaluru": 6,
+   "MA Chidambaram Stadium, Chennai": 7,
+   "Maharaja Yadavindra Singh International Cricket Stadium, Mullanpur, New Chandigarh": 8,
+   "Narendra Modi Stadium, Ahmedabad": 9,
+   "Rajiv Gandhi International Stadium, Hyderabad": 10,
+   "Sawai Mansingh Stadium, Jaipur": 11,
+   "Shaheed Veer Narayan Singh International Stadium, Raipur": 12,
+   "Wankhede Stadium, Mumbai": 13
+  },
+  "phase": {
+   "Death": 1,
+   "Middle": 2,
+   "Powerplay": 3
+  }
+ },
+ "maps_inn2": {
+  "batting_team": {
+   "Chennai Super Kings": 1,
+   "Delhi Capitals": 2,
+   "Gujarat Titans": 3,
+   "Kolkata Knight Riders": 4,
+   "Lucknow Super Giants": 5,
+   "Mumbai Indians": 6,
+   "Punjab Kings": 7,
+   "Rajasthan Royals": 8,
+   "Royal Challengers Bengaluru": 9,
+   "Sunrisers Hyderabad": 10
+  },
+  "bowling_team": {
+   "Chennai Super Kings": 1,
+   "Delhi Capitals": 2,
+   "Gujarat Titans": 3,
+   "Kolkata Knight Riders": 4,
+   "Lucknow Super Giants": 5,
+   "Mumbai Indians": 6,
+   "Punjab Kings": 7,
+   "Rajasthan Royals": 8,
+   "Royal Challengers Bengaluru": 9,
+   "Sunrisers Hyderabad": 10
+  },
+  "venue": {
+   "Arun Jaitley Stadium, Delhi": 1,
+   "Barsapara Cricket Stadium, Guwahati": 2,
+   "Bharat Ratna Shri Atal Bihari Vajpayee Ekana Cricket Stadium, Lucknow": 3,
+   "Eden Gardens, Kolkata": 4,
+   "Himachal Pradesh Cricket Association Stadium, Dharamsala": 5,
+   "M.Chinnaswamy Stadium, Bengaluru": 6,
+   "MA Chidambaram Stadium, Chennai": 7,
+   "Maharaja Yadavindra Singh International Cricket Stadium, Mullanpur, New Chandigarh": 8,
+   "Narendra Modi Stadium, Ahmedabad": 9,
+   "Rajiv Gandhi International Stadium, Hyderabad": 10,
+   "Sawai Mansingh Stadium, Jaipur": 11,
+   "Shaheed Veer Narayan Singh International Stadium, Raipur": 12,
+   "Wankhede Stadium, Mumbai": 13
+  },
+  "phase": {
+   "Death": 1,
+   "Middle": 2,
+   "Powerplay": 3
+  }
+ },
+ "features_inn1": [
+  "batting_team",
+  "bowling_team",
+  "venue",
+  "phase",
+  "total_runs",
+  "total_wickets",
+  "wickets_remaining",
+  "balls_bowled",
+  "balls_remaining",
+  "crr",
+  "mom_runs_l30",
+  "mom_wkts_l30",
+  "mom_dot_rate_l30",
+  "mom_bdry_rate_l30",
+  "partnership_runs",
+  "partnership_balls"
+ ],
+ "features_inn2": [
+  "batting_team",
+  "bowling_team",
+  "venue",
+  "phase",
+  "total_runs",
+  "total_wickets",
+  "wickets_remaining",
+  "balls_bowled",
+  "balls_remaining",
+  "crr",
+  "mom_runs_l30",
+  "mom_wkts_l30",
+  "mom_dot_rate_l30",
+  "mom_bdry_rate_l30",
+  "partnership_runs",
+  "partnership_balls",
+  "target",
+  "runs_to_win",
+  "rrr",
+  "crr_minus_rrr"
+ ],
+ "momentum_window": 30
+}

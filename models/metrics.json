@@ -1,0 +1,75 @@
+{
+ "innings1_projected_score": {
+  "n_rows": 9093,
+  "n_matches": 74,
+  "MAE_overall_runs": 27.3,
+  "MAE_by_phase_runs": {
+   "Powerplay": 33.4,
+   "Middle": 26.6,
+   "Death": 21.2
+  },
+  "note": "Avg error of the projected final score. Large early (little info), tight at the death."
+ },
+ "innings2_win_prob": {
+  "n_rows": 8380,
+  "n_matches": 73,
+  "accuracy": 0.77,
+  "log_loss": 1.361,
+  "roc_auc": 0.859,
+  "brier": 0.208,
+  "brier_calibrated": 0.143,
+  "reliability_curve": [
+   [
+    0.05,
+    0.044,
+    804
+   ],
+   [
+    0.15,
+    0.136,
+    177
+   ],
+   [
+    0.25,
+    0.231,
+    130
+   ],
+   [
+    0.35,
+    0.397,
+    575
+   ],
+   [
+    0.45,
+    0.438,
+    1242
+   ],
+   [
+    0.55,
+    0.545,
+    1274
+   ],
+   [
+    0.65,
+    0.667,
+    21
+   ],
+   [
+    0.75,
+    0.753,
+    1168
+   ],
+   [
+    0.85,
+    0.879,
+    991
+   ],
+   [
+    0.95,
+    0.969,
+    1446
+   ]
+  ],
+  "note": "Match-level GroupKFold (no ball leakage). Calibrated probabilities served at inference."
+ }
+}

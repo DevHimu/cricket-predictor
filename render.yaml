@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: cricket-predictor
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --app-dir app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SCORER_BASE
+        value: https://cricket-scorer-pk3j.onrender.com
