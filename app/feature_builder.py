@@ -27,10 +27,12 @@ def _rt(b):   # runs this ball
     return int(b["runs_of_bat"]) + int(b["extras"])
 
 def build_features(timeline, *, innings, batting_team, bowling_team,
-                   venue=None, target=None):
+                   venue=None, target=None, total_balls=INNINGS_BALLS):
     """Build the feature dict for the CURRENT (latest) ball of an innings.
 
     timeline : ordered list of ball dicts for THIS innings up to and incl. now.
+    total_balls : legal deliveries in the innings (120 for T20; pass e.g. 36 for
+                  a 6-over match so balls_remaining / RRR are correct).
     Returns a flat dict whose keys are exactly the model's feature names
     (plus the chase-only keys when innings == 2).
     """
@@ -40,7 +42,7 @@ def build_features(timeline, *, innings, batting_team, bowling_team,
     total_runs = sum(_rt(b) for b in timeline)
     total_wickets = sum(int(b["is_wicket"]) for b in timeline)
     balls_bowled = sum(int(b["is_legal"]) for b in timeline)
-    balls_remaining = max(INNINGS_BALLS - balls_bowled, 0)
+    balls_remaining = max(total_balls - balls_bowled, 0)
     wickets_remaining = 10 - total_wickets
     crr = round(total_runs / (balls_bowled / 6), 2) if balls_bowled > 0 else 0.0
 

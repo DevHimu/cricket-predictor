@@ -43,6 +43,7 @@ class PredictReq(BaseModel):
     bowling_team: str
     venue: Optional[str] = None
     target: Optional[int] = None
+    total_balls: Optional[int] = 120
     timeline: List[Ball]
 
 class ReportReq(BaseModel):
@@ -105,7 +106,7 @@ def predict(req: PredictReq):
         raise HTTPException(400, "timeline is empty")
     feats = build_features(tl, innings=req.innings, batting_team=req.batting_team,
                            bowling_team=req.bowling_team, venue=req.venue,
-                           target=req.target)
+                           target=req.target, total_balls=req.total_balls or 120)
     return predictor.predict(feats, req.innings)
 
 @app.get("/live/{match_id}")

@@ -194,11 +194,30 @@ const {useState,useEffect,useRef} = React;
    /api/matches directly (no CORS, no URL to configure).
    Set DEMO_MODE:false to switch from the baked demo to real live matches.      */
 const CONFIG = {
-  DEMO_MODE: true,
+  DEMO_MODE: false,        // false = real live matches from your scorer; true = baked demo
   API_BASE: "",            // same origin — the service serves this page + the API
 };
 const apiGet = (path) =>
   fetch((CONFIG.API_BASE || "") + path).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); });
+const apiPost = (path, body) =>
+  fetch((CONFIG.API_BASE || "") + path, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(r => { if(!r.ok) throw new Error(r.status); return r.json(); });
+
+/* reconstruct one delivery by diffing two /score snapshots (same logic as server) */
+function ballFromSnaps(prev, cur){
+  const pe = prev ? (prev.extras||{}) : {};
+  const ce = cur.extras||{};
+  const runsDelta = (cur.runs||0) - (prev ? (prev.runs||0) : 0);
+  const wide = (ce.wides||0) - (pe.wides||0);
+  const nb   = (ce.noballs||0) - (pe.noballs||0);
+  const exTot= (ce.total||0) - (prev ? (pe.total||0) : 0);
+  return {
+    runs_of_bat: Math.max(runsDelta - exTot, 0),
+    extras: Math.max(exTot,0),
+    is_wicket: (cur.wickets||0) > (prev ? (prev.wickets||0) : 0) ? 1 : 0,
+    is_legal: (wide>0 || nb>0) ? 0 : 1,
+  };
+}
 
 const DATA = window.DEMO_DATA;
 const pct = x => Math.round(x*100);
@@ -326,9 +345,11 @@ function LiveView({match, onBack}){
   const isLiveApi = match.isLive && !CONFIG.DEMO_MODE;
   const [liveTl,setLiveTl]=useState([]);
   const [liveErr,setLiveErr]=useState(null);
+  const [status,setStatus]=useState('live');
   const [idx,setIdx]=useState(((match.timeline&&match.timeline.length)||1)-1);
   const [playing,setPlaying]=useState(false);
   const [speed,setSpeed]=useState(1);
+  const stateRef = useRef({prevSnap:{}, raw:{1:[],2:[]}, entries:[]});
 
   // demo replay: start midway
   useEffect(()=>{ if(match.isLive && !isLiveApi){ setIdx(Math.floor(match.timeline.length*0.62)); setPlaying(true);} },[]);
@@ -339,23 +360,47 @@ function LiveView({match, onBack}){
     const t=setTimeout(()=>setIdx(i=>Math.min(i+1,match.timeline.length-1)), 650/speed);
     return ()=>clearTimeout(t);
   },[playing,idx,speed,isLiveApi]);
-  // live API: poll /live/:id every 2s and accumulate the timeline
+  // live API: poll /score, diff to a timeline, predict
   useEffect(()=>{
     if(!isLiveApi) return;
     let stop=false;
     const poll=async()=>{
       try{
-        const L=await apiGet(`/live/${match.id}`);
+        const s=await apiGet(`/api/matches/${match.id}/score`);
         if(stop) return;
-        if(L && L.balls_bowled!=null){
-          setLiveTl(prev=>{
-            const last=prev[prev.length-1];
-            if(last && last.bb===L.balls_bowled && last.inn===L.innings) return prev;
-            return [...prev, liveEntry(last, L)];
-          });
+        setStatus(s.status||'live');
+        const inn=s.innings||1;
+        const S=stateRef.current;
+        if(!S.raw[inn]) S.raw[inn]=[];
+        const totalDeliv=(s.ballsBowled||0)+((s.extras&&(s.extras.wides+s.extras.noballs))||0);
+        // a new delivery happened for this innings?
+        if(totalDeliv > S.raw[inn].length){
+          const ball=ballFromSnaps(S.prevSnap[inn], s);
+          S.raw[inn].push(ball);
         }
-        setLiveErr(null);
-        if(L && L.status==='complete') return;   // stop when match ends
+        S.prevSnap[inn]=s;
+        // predict from the accumulated timeline for this innings
+        let pred={};
+        try{ pred=await apiPost('/predict',{innings:inn,batting_team:s.batting,bowling_team:s.bowling,
+              venue:s.venue||null,target:s.target||null,
+              total_balls:((s.ballsBowled||0)+(s.ballsRemaining||0))||120,
+              timeline:S.raw[inn]}); }catch(e){}
+        const isChase=inn===2;
+        const entry={inn, bb:s.ballsBowled||0, over:s.oversBowled||(Math.round((s.ballsBowled||0)/6*10)/10),
+          runs:s.runs||0, wkts:s.wickets||0, crr:s.runRate||0,
+          rrr:(s.required&&s.required.balls)? Math.round((s.required.runs/(s.required.balls/6))*100)/100:0,
+          need:(s.required&&s.required.runs)||0, target:s.target,
+          bat:s.batting, bowl:s.bowling,
+          wp:isChase&&pred.win_probability? pred.win_probability[s.batting] : undefined,
+          proj:!isChase? (pred.projected_score||0) : undefined,
+          rob:(S.raw[inn][S.raw[inn].length-1]||{}).runs_of_bat||0,
+          ex:(S.raw[inn][S.raw[inn].length-1]||{}).extras||0,
+          w:(S.raw[inn][S.raw[inn].length-1]||{}).is_wicket||0};
+        // replace last entry if same ball, else append
+        const E=S.entries; const last=E[E.length-1];
+        if(last && last.inn===entry.inn && last.bb===entry.bb) E[E.length-1]=entry; else E.push(entry);
+        setLiveTl([...E]); setLiveErr(null);
+        if(s.status==='complete') return;
       }catch(e){ if(!stop) setLiveErr(String(e.message||e)); }
       if(!stop) setTimeout(poll, 2000);
     };
@@ -366,7 +411,7 @@ function LiveView({match, onBack}){
   const tl = isLiveApi ? liveTl : match.timeline;
   if(isLiveApi && tl.length===0){
     return <div><button className="back" onClick={onBack}>&larr; BACK</button>
-      <div className="board"><div className="venue">{match.venue||''}</div>
+      <div className="board"><div className="venue">{match.teamA} v {match.teamB}</div>
       <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>
         {liveErr ? 'Connecting to prediction service… ('+liveErr+')' : 'Waiting for the first ball…'}</p>
       </div></div>;
@@ -378,14 +423,15 @@ function LiveView({match, onBack}){
   const bowlTeam= cur.bowl || (isChase? match.teamA : match.teamB);
   const target = (cur.target!=null? cur.target : match.target);
   const last6 = tl.slice(Math.max(0,curIdx-5),curIdx+1);
-  const wormPts = tl.filter((p,i)=> p.inn===2 && i<=curIdx).map(p=>p.wp);
+  const wormPts = tl.filter((p,i)=> p.inn===2 && i<=curIdx).map(p=>p.wp).filter(x=>x!=null);
   const wp = isChase? cur.wp : null;
 
   return <div>
     <button className="back" onClick={onBack}>&larr; BACK</button>
-    {isLiveApi && <div style={{fontFamily:'Space Mono',fontSize:'11px',color:'var(--ball)',marginBottom:'8px',letterSpacing:'.1em'}}>● LIVE — updating every 2s{liveErr?' (reconnecting…)':''}</div>}
+    {isLiveApi && <div style={{fontFamily:'Space Mono',fontSize:'11px',color:status==='complete'?'var(--muted)':'var(--ball)',marginBottom:'8px',letterSpacing:'.1em'}}>
+      {status==='complete'?'■ MATCH COMPLETE':'● LIVE — updating every 2s'}{liveErr?' (reconnecting…)':''}</div>}
     <div className="board">
-      <div className="venue">{match.venue}</div>
+      <div className="venue">{match.venue||(match.teamA+' v '+match.teamB)}</div>
       <div className="teams">
         <div className="team bat">
           <div className="lbl">{batTeam} · batting</div>
@@ -394,9 +440,9 @@ function LiveView({match, onBack}){
         </div>
         <div className="team chase">
           <div className="lbl">{bowlTeam} · bowling</div>
-          {isChase
-            ? <div className="need">need <b>{cur.need}</b> in <b>{120-cur.bb}</b></div>
-            : <div className="need mono" style={{color:'var(--muted)'}}>{bowlTeam} to chase</div>}
+          {isChase && cur.need!=null
+            ? <div className="need">need <b>{cur.need}</b></div>
+            : <div className="need mono" style={{color:'var(--muted)'}}>{bowlTeam} bowling</div>}
         </div>
       </div>
       <div className="rates">
@@ -405,7 +451,7 @@ function LiveView({match, onBack}){
         <div>OVERS <b>{cur.over}</b></div>
       </div>
 
-      {isChase
+      {isChase && wp!=null
         ? <div className="winbar">
             <div className="track">
               <div className="seg a" style={{width:pct(wp)+'%'}}>{wp>0.14&&<span>{pct(wp)}%</span>}</div>
@@ -413,21 +459,21 @@ function LiveView({match, onBack}){
             </div>
             <div className="names"><span className="an">{batTeam}</span><span className="bn">{bowlTeam}</span></div>
           </div>
-        : <div className="proj"><span className="k">Projected final</span>
+        : (!isChase && cur.proj!=null) ? <div className="proj"><span className="k">Projected final</span>
             <span className="val num">{Math.round(cur.proj)}</span>
-            <span className="rng">± ~{cur.bb<36?32:cur.bb<90?26:21}</span></div>}
+            <span className="rng">± ~{cur.bb<36?32:cur.bb<90?26:21}</span></div> : null}
 
       <div className="callout">
         <div className="k">Prediction</div>
         <div className="v">{isChase
-          ? `${wp>=0.5?batTeam:bowlTeam} favoured — ${pct(wp>=0.5?wp:1-wp)}% to win. ${batTeam} need ${cur.need} off ${120-cur.bb}.`
-          : `${batTeam} tracking toward ${Math.round(cur.proj)}. ${cur.wkts} down at ${cur.over} overs.`}</div>
+          ? (wp!=null? `${wp>=0.5?batTeam:bowlTeam} favoured — ${pct(wp>=0.5?wp:1-wp)}% to win.`:'Building prediction…')
+          : (cur.proj!=null? `${batTeam} tracking toward ${Math.round(cur.proj)}. ${cur.wkts} down at ${cur.over} overs.`:'Building prediction…')}</div>
       </div>
 
       <LastBalls balls={last6}/>
     </div>
 
-    {(isChase||wormPts.length>0) && <Worm points={wormPts} live={isLiveApi||(match.isLive&&playing)}/>}
+    {wormPts.length>0 && <Worm points={wormPts} live={isLiveApi&&status!=='complete'}/>}
 
     <Manhattan overs={oversFromTimeline(tl.slice(0,curIdx+1).filter(p=>p.inn===cur.inn))}
       title={`OVER BY OVER · ${batTeam}`}/>
@@ -518,6 +564,7 @@ function Home({onOpen}){
 }
 
 function HomeDemo({onOpen}){
+  if(!DATA || !DATA.length) return <p style={{color:'var(--muted)',fontFamily:'Space Mono'}}>No demo data loaded.</p>;
   const live=DATA[0]; const past=DATA.slice(1);
   const midIdx=Math.floor(live.timeline.length*0.62); const c=live.timeline[midIdx];
   return <div>
@@ -548,34 +595,41 @@ function HomeLive({onOpen}){
   useEffect(()=>{
     let stop=false;
     const load=()=>apiGet('/api/matches')
-      .then(d=>{ if(!stop){ setMatches(Array.isArray(d)?d:(d.matches||[])); setErr(null); } })
+      .then(d=>{ if(!stop){ setMatches(Array.isArray(d)?d:(d.matches||d.live||[]).concat(d.played||[])); setErr(null); } })
       .catch(e=>{ if(!stop) setErr(String(e.message||e)); });
     load(); const iv=setInterval(load,5000);
     return ()=>{ stop=true; clearInterval(iv); };
   },[]);
-  const nm=m=>({ id:m.id||m._id||m.matchId,
-    teamA:(m.teams&&m.teams.A)||m.teamA||m.battingFirst||'Team A',
-    teamB:(m.teams&&m.teams.B)||m.teamB||'Team B',
-    venue:m.venue||'', status:m.status });
+  const nm=m=>{
+    const inns=(m.innings||[]); const cur=inns[inns.length-1]||{};
+    return { id:m.id||m._id||m.matchId,
+      teamA:(m.teams&&m.teams.A)||m.teamA||m.battingFirst||'Team A',
+      teamB:(m.teams&&m.teams.B)||m.teamB||'Team B',
+      venue:m.venue||'', status:m.status, result:m.result,
+      score:cur.runs!=null?`${cur.runs}/${cur.wickets}`:'', over:cur.overs||'', batting:cur.battingTeam||'' };
+  };
   if(err) return <div className="board"><div className="venue">Could not reach the prediction service.</div>
-    <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>{err} — check the service is running at /health.</p></div>;
+    <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>Error: {err}. Open /debug/scorer to check the scorer link, or /health to confirm the service is up.</p></div>;
   if(!matches) return <p style={{color:'var(--muted)',fontFamily:'Space Mono'}}>Loading matches…</p>;
   const norm=matches.map(nm);
   const liveOnes=norm.filter(m=>m.status==='live');
   const pastOnes=norm.filter(m=>m.status==='complete');
   return <div>
-    {liveOnes.length===0 && <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>No live match right now — start scoring one to see it here.</p>}
+    {liveOnes.length===0 && <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>No live match right now — start scoring one in your scorer and it appears here.</p>}
     {liveOnes.map(m=>
       <button className="livetile" key={m.id} style={{marginBottom:'12px'}} onClick={()=>onOpen({...m,isLive:true},'live')}>
         <div className="livehead"><span className="pulse"/><span className="livelabel">LIVE NOW</span></div>
         <div className="matchup">{m.teamA} v {m.teamB}{m.venue?' · '+m.venue.split(',')[0]:''}</div>
+        {m.score && <div className="livescore"><div className="num">{m.score}</div>
+          <div className="ov">{m.over} ov · {m.batting}</div></div>}
         <div className="tilehint">Tap for live score and prediction →</div>
       </button>)}
     {pastOnes.length>0 && <div className="sec"><h2>Completed matches</h2><div className="rule"/></div>}
     <div className="grid">
       {pastOnes.map(m=><button className="card" key={m.id} onClick={()=>onOpen({...m,isLive:true},'live')}>
         <div className="vs">{m.teamA} v {m.teamB}</div>
-        <div className="meta"><span>{m.venue?m.venue.split(',')[0]:''}</span><span className="arrow">view →</span></div>
+        {m.result && <div className="res">{m.result}</div>}
+        <div className="meta"><span>{m.venue?m.venue.split(',')[0]:'result'}</span><span className="arrow">view →</span></div>
       </button>)}
     </div>
   </div>;
@@ -599,7 +653,21 @@ function App(){
     <div className="footer">POWERED BY LIGHTGBM · CALIBRATED WIN PROBABILITY · MAE ~21 AT DEATH</div>
   </div>;
 }
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+class ErrorBoundary extends React.Component{
+  constructor(p){ super(p); this.state={err:null}; }
+  static getDerivedStateFromError(err){ return {err}; }
+  render(){
+    if(this.state.err) return <div className="wrap">
+      <div className="board"><div className="venue">Something went wrong rendering the app.</div>
+      <p style={{color:'var(--ball)',fontFamily:'Space Mono',fontSize:'13px',whiteSpace:'pre-wrap'}}>
+        {String(this.state.err && this.state.err.message || this.state.err)}</p>
+      <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'12px'}}>
+        If this mentions demo data, set DEMO_MODE:false in the CONFIG block. Otherwise check /health and /debug/scorer.</p>
+      </div></div>;
+    return this.props.children;
+  }
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
 </script>
 </body>
 </html>
