@@ -16,7 +16,7 @@ import os
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from feature_builder import build_features
@@ -53,14 +53,49 @@ class ReportReq(BaseModel):
     result: Optional[str] = None
 
 # ── Frontend ──────────────────────────────────────────────────────
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def home():
     return FileResponse(WEBAPP)
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)   # no icon; stops the 404 noise
 
 # ── Health ────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     return {"status": "ok", "models": ["projected_score", "win_prob"]}
+
+# ── Diagnostic: can THIS service reach the scorer? ────────────────
+@app.get("/debug/scorer")
+def debug_scorer():
+    """Open this in your browser to see whether the Predictor can reach the
+    Scorer, how long it takes, and how many matches it returns. Turns a vague
+    'api error' into a concrete answer."""
+    import scorer_client, time
+    out = {"scorer_base": scorer_client.BASE}
+    t = time.time()
+    try:
+        data = scorer_client.fetch_json("/api/matches")
+        out["reachable"] = True
+        out["elapsed_seconds"] = round(time.time() - t, 1)
+        if isinstance(data, list):
+            out["match_count"] = len(data)
+            out["sample"] = data[:2]
+        elif isinstance(data, dict):
+            lst = data.get("matches", [])
+            out["match_count"] = len(lst) if isinstance(lst, list) else "unknown"
+            out["sample"] = data
+        else:
+            out["match_count"] = "unknown"
+    except Exception as e:
+        out["reachable"] = False
+        out["elapsed_seconds"] = round(time.time() - t, 1)
+        out["error"] = str(e)
+        out["hint"] = ("If elapsed is ~15-30s, the scorer was asleep (free-tier "
+                       "cold start). Open the scorer's own URL once to wake it, "
+                       "then retry. If it says connection/DNS, check SCORER_BASE.")
+    return out
 
 # ── Prediction API ────────────────────────────────────────────────
 @app.post("/predict")

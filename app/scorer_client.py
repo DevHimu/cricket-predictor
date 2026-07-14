@@ -69,9 +69,21 @@ def ball_from_snapshots(prev: dict, cur: dict) -> dict:
             "striker": facing.get("name"), "bowler": bowling.get("name")}
 
 
-def fetch_json(path: str):
-    r = requests.get(f"{BASE}{path}", timeout=15); r.raise_for_status()
-    return r.json()
+def fetch_json(path: str, timeout: int = 30, retries: int = 1):
+    """GET JSON from the scorer. Longer timeout + one retry so a free-tier
+    cold start (scorer waking up) doesn't fail the first request."""
+    import time
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            r = requests.get(f"{BASE}{path}", timeout=timeout)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            last = e
+            if attempt < retries:
+                time.sleep(2)
+    raise last
 
 def state_from_match(match_id: str):
     """Fetch /matches/:id and return everything needed to predict the live ball:
