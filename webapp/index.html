@@ -601,6 +601,8 @@ function LiveView({
           bowl: s.bowling,
           wp: isChase && pred.win_probability ? pred.win_probability[s.batting] : undefined,
           proj: !isChase ? pred.projected_score || 0 : undefined,
+          method: pred.projection_method,
+          innBalls: pred.innings_balls || (s.ballsBowled || 0) + (s.ballsRemaining || 0) || 120,
           rob: (S.raw[inn][S.raw[inn].length - 1] || {}).runs_of_bat || 0,
           ex: (S.raw[inn][S.raw[inn].length - 1] || {}).extras || 0,
           w: (S.raw[inn][S.raw[inn].length - 1] || {}).is_wicket || 0
@@ -719,7 +721,7 @@ function LiveView({
     className: "val num"
   }, Math.round(cur.proj)), /*#__PURE__*/React.createElement("span", {
     className: "rng"
-  }, "± ~", cur.bb < 36 ? 32 : cur.bb < 90 ? 26 : 21)) : null, /*#__PURE__*/React.createElement("div", {
+  }, cur.method === 'rate_based' ? '± ~20 · rate-based' : '± ~' + (cur.bb < 36 ? 32 : cur.bb < 90 ? 26 : 21))) : null, /*#__PURE__*/React.createElement("div", {
     className: "callout"
   }, /*#__PURE__*/React.createElement("div", {
     className: "k"

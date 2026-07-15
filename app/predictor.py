@@ -24,10 +24,55 @@ def _encode(feats, maps):
 def _frame(feats, order):
     return pd.DataFrame([[feats[k] for k in order]], columns=order)
 
+FULL_T20_BALLS = 120
+
 def predict_projected_score(feats):
     row = _encode(feats, _cfg["maps_inn1"])
     val = float(_score_model.predict(_frame(row, FEATS1))[0])
     return round(val, 1)
+
+def project_short_format(feats):
+    """Rate-based projection for innings that are NOT 20 overs.
+
+    Why not the ML model: it was trained only on 20-over IPL innings, where
+    balls_bowled + balls_remaining is ALWAYS 120. A 6-over innings (36 balls)
+    is a combination it never saw, and its training labels are 20-over totals,
+    so it anchors to ~190 regardless of format. Using it here would be wrong.
+
+    This projector is transparent instead: it extrapolates the team's own
+    scoring rate over the balls actually left, adjusted for wickets in hand and
+    end-of-innings acceleration. It works for any innings length.
+    """
+    runs = feats["total_runs"]
+    bowled = max(feats["balls_bowled"], 1)
+    left = feats["balls_remaining"]
+    total = feats.get("total_balls") or FULL_T20_BALLS
+    if left <= 0:
+        return float(runs)
+
+    # 1. Scoring rate: blend whole-innings rate with recent form (recent wins,
+    #    because short formats swing fast). Window is scaled to the format.
+    rpb_so_far = runs / bowled
+    window = min(bowled, max(6, total // 4))
+    recent_runs = feats.get("mom_runs_l30", 0)
+    if bowled > 30:                       # momentum window caps at 30 balls
+        window = min(window, 30)
+    rpb_recent = recent_runs / max(min(window, 30), 1)
+    base_rpb = 0.4 * rpb_so_far + 0.6 * rpb_recent if recent_runs else rpb_so_far
+
+    # 2. Wickets in hand: fewer wickets -> the rate has to come down.
+    wr = feats.get("wickets_remaining", 10)
+    wkt_factor = 0.60 + 0.40 * (wr / 10.0)          # 10 wkts ->1.00, 5 ->0.80, 2 ->0.68
+
+    # 3. Acceleration: remaining balls sit later in the innings, where teams hit
+    #    harder. Mild, and scaled by how far through we already are.
+    progress = bowled / total
+    avg_remaining_progress = (progress + 1.0) / 2.0
+    accel = 1.0 + 0.30 * avg_remaining_progress
+
+    rpb = base_rpb * wkt_factor * accel
+    proj = runs + left * rpb
+    return round(max(proj, float(runs)), 1)
 
 def predict_win_prob(feats):
     """Returns calibrated P(batting/chasing team wins), 0..1."""
@@ -39,8 +84,14 @@ def predict_win_prob(feats):
 def predict(feats, innings):
     """Route by innings. Returns a serving-ready dict."""
     if innings == 1:
-        proj = predict_projected_score(feats)
+        total = feats.get("total_balls") or FULL_T20_BALLS
+        if total == FULL_T20_BALLS:
+            proj, method = predict_projected_score(feats), "ml_model"
+        else:
+            proj, method = project_short_format(feats), "rate_based"
         return {"innings": 1, "projected_score": proj,
+                "projection_method": method,
+                "innings_balls": total,
                 "current": f"{feats['total_runs']}/{feats['total_wickets']}",
                 "balls_bowled": feats["balls_bowled"], "crr": feats["crr"]}
     p = predict_win_prob(feats)

@@ -79,4 +79,7 @@ def build_features(timeline, *, innings, batting_team, bowling_team,
         rrr = round(rtw / (balls_remaining / 6), 2) if balls_remaining > 0 else 0.0
         feats.update(target=tg, runs_to_win=rtw, rrr=rrr,
                      crr_minus_rrr=round(crr - rrr, 2))
+    # Metadata (NOT a model feature — the models never saw it in training).
+    # The predictor uses it to route short formats away from the 20-over model.
+    feats["total_balls"] = int(total_balls)
     return feats

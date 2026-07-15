@@ -393,6 +393,8 @@ function LiveView({match, onBack}){
           bat:s.batting, bowl:s.bowling,
           wp:isChase&&pred.win_probability? pred.win_probability[s.batting] : undefined,
           proj:!isChase? (pred.projected_score||0) : undefined,
+          method: pred.projection_method,
+          innBalls: pred.innings_balls || ((s.ballsBowled||0)+(s.ballsRemaining||0)) || 120,
           rob:(S.raw[inn][S.raw[inn].length-1]||{}).runs_of_bat||0,
           ex:(S.raw[inn][S.raw[inn].length-1]||{}).extras||0,
           w:(S.raw[inn][S.raw[inn].length-1]||{}).is_wicket||0};
@@ -461,7 +463,9 @@ function LiveView({match, onBack}){
           </div>
         : (!isChase && cur.proj!=null) ? <div className="proj"><span className="k">Projected final</span>
             <span className="val num">{Math.round(cur.proj)}</span>
-            <span className="rng">± ~{cur.bb<36?32:cur.bb<90?26:21}</span></div> : null}
+            <span className="rng">{cur.method==='rate_based'
+              ? '± ~20 · rate-based'
+              : '± ~'+(cur.bb<36?32:cur.bb<90?26:21)}</span></div> : null}
 
       <div className="callout">
         <div className="k">Prediction</div>
