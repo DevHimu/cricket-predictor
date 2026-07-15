@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Cricket Live Predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+:root{
+  --ink:#0A111F; --ink2:#0E1728; --panel:#111C31; --panel2:#152238;
+  --line:#1E2C45; --amber:#FFB020; --amber-dim:#7a5716; --cyan:#3FC8E4; --cyan-dim:#1c5766;
+  --text:#EAF0FA; --muted:#8494AE; --ball:#FF5568; --good:#57D9A3;
+  --card:#101B2E;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:radial-gradient(1200px 600px at 50% -10%, #14233d 0%, transparent 60%), var(--ink);
+  background-color:var(--ink); color:var(--text);
+  font-family:"Space Grotesk",system-ui,sans-serif; -webkit-font-smoothing:antialiased;}
+.wrap{max-width:960px;margin:0 auto;padding:22px 18px 60px}
+.eyebrow{font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted)}
+h1,h2,h3{font-family:"Archivo",sans-serif;margin:0}
+.num{font-family:"Archivo",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mono{font-family:"Space Mono",monospace}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:8px}
+
+/* top bar */
+.topbar{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px}
+.brand{display:flex;flex-direction:column;gap:3px}
+.brand h1{font-size:19px;font-weight:900;letter-spacing:-.01em}
+.brand .dot{color:var(--amber)}
+.tag{font-family:"Space Mono",monospace;font-size:10.5px;color:var(--muted);letter-spacing:.12em}
+
+/* live tile */
+.livetile{position:relative;width:100%;text-align:left;border:1px solid var(--line);
+  background:linear-gradient(180deg,#132238 0%, var(--card) 70%);
+  background-color:var(--card); border-radius:16px;padding:20px 20px 18px;overflow:hidden;
+  transition:border-color .2s, transform .2s}
+.livetile:hover{border-color:var(--amber-dim);transform:translateY(-2px)}
+.livetile::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(300px 120px at 85% 0%, rgba(255,176,32,.14), transparent 70%);pointer-events:none}
+.livehead{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.pulse{width:9px;height:9px;border-radius:50%;background:var(--ball);
+  box-shadow:0 0 0 0 rgba(255,85,104,.7);animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,85,104,.6)}70%{box-shadow:0 0 0 10px rgba(255,85,104,0)}100%{box-shadow:0 0 0 0 rgba(255,85,104,0)}}
+.livelabel{font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.24em;color:var(--ball)}
+.matchup{font-size:13px;color:var(--muted);margin-bottom:2px}
+.livescore{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.livescore .num{font-size:44px;font-weight:900;line-height:.95}
+.livescore .ov{color:var(--muted);font-size:14px;padding-bottom:6px}
+.tilehint{margin-top:14px;font-size:12px;color:var(--muted)}
+
+/* section heads */
+.sec{margin:34px 0 14px;display:flex;align-items:center;gap:12px}
+.sec h2{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.sec .rule{flex:1;height:1px;background:var(--line)}
+
+/* past grid */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(max-width:640px){.grid{grid-template-columns:1fr}}
+.card{text-align:left;border:1px solid var(--line);background:var(--card);border-radius:13px;padding:15px 16px;transition:border-color .2s,transform .2s}
+.card:hover{border-color:var(--cyan-dim);transform:translateY(-2px)}
+.card .vs{font-size:14.5px;font-weight:700;font-family:"Archivo";margin-bottom:6px}
+.card .res{font-size:12px;color:var(--good);margin-bottom:8px}
+.card .meta{font-size:11px;color:var(--muted);font-family:"Space Mono";display:flex;gap:8px}
+.card .arrow{color:var(--cyan)}
+
+/* back */
+.back{font-family:"Space Mono";font-size:12px;color:var(--muted);letter-spacing:.1em;margin-bottom:18px}
+.back:hover{color:var(--text)}
+
+/* scoreboard */
+.board{border:1px solid var(--line);background:var(--card);border-radius:16px;padding:20px;position:relative;overflow:hidden}
+.board .venue{font-size:11.5px;color:var(--muted);font-family:"Space Mono";margin-bottom:14px;letter-spacing:.06em}
+.teams{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.team .lbl{font-size:12px;color:var(--muted);margin-bottom:4px}
+.team.bat .lbl{color:var(--amber)}
+.team .big{font-size:52px;font-weight:900;line-height:.9}
+.team .ov{font-size:13px;color:var(--muted);margin-top:6px;font-family:"Space Mono"}
+.chase{text-align:right}
+.chase .need{font-size:14px;color:var(--text)}
+.chase .need b{color:var(--amber)}
+.rates{display:flex;gap:22px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-family:"Space Mono";font-size:12px;color:var(--muted)}
+.rates b{color:var(--text)}
+
+/* prediction callout */
+.callout{margin-top:16px;border:1px solid var(--amber-dim);background:linear-gradient(180deg,rgba(255,176,32,.06),transparent);border-radius:12px;padding:13px 15px}
+.callout .k{font-family:"Space Mono";font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:7px}
+.callout .v{font-size:15px}
+
+/* win bar */
+.winbar{margin-top:11px}
+.winbar .track{height:34px;border-radius:9px;overflow:hidden;display:flex;border:1px solid var(--line)}
+.winbar .seg{display:flex;align-items:center;height:100%;transition:width .5s cubic-bezier(.4,0,.2,1);min-width:2px}
+.winbar .a{background:linear-gradient(90deg,var(--amber-dim),var(--amber));justify-content:flex-start}
+.winbar .b{background:linear-gradient(270deg,var(--cyan-dim),var(--cyan));justify-content:flex-end}
+.winbar .seg span{font-family:"Archivo";font-weight:900;font-size:13px;color:#0A111F;padding:0 11px;white-space:nowrap}
+.winbar .names{display:flex;justify-content:space-between;margin-top:7px;font-size:11.5px;color:var(--muted)}
+.winbar .names .an{color:var(--amber)} .winbar .names .bn{color:var(--cyan)}
+
+/* projected (1st inns) */
+.proj{margin-top:12px;display:flex;align-items:baseline;gap:14px}
+.proj .k{font-family:"Space Mono";font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.proj .val{font-size:40px;font-weight:900;color:var(--amber)}
+.proj .rng{color:var(--muted);font-size:13px;font-family:"Space Mono"}
+
+/* worm */
+.worm{margin-top:8px;border:1px solid var(--line);background:var(--ink2);border-radius:13px;padding:14px 12px 8px}
+.worm .cap{display:flex;justify-content:space-between;font-family:"Space Mono";font-size:10.5px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;padding:0 4px}
+
+/* last balls */
+.lastballs{display:flex;gap:7px;margin-top:16px;align-items:center;flex-wrap:wrap}
+.lastballs .k{font-family:"Space Mono";font-size:10.5px;color:var(--muted);letter-spacing:.14em;margin-right:2px}
+.chip{width:29px;height:29px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:"Archivo";font-weight:700;font-size:12px;background:var(--panel);border:1px solid var(--line)}
+.chip.four{background:rgba(63,200,228,.16);border-color:var(--cyan-dim);color:var(--cyan)}
+.chip.six{background:rgba(255,176,32,.16);border-color:var(--amber-dim);color:var(--amber)}
+.chip.w{background:rgba(255,85,104,.18);border-color:var(--ball);color:var(--ball)}
+.chip.dot{color:var(--muted)}
+
+/* replay controls */
+.controls{display:flex;align-items:center;gap:10px;margin-top:18px;flex-wrap:wrap}
+.controls button{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:8px 14px;font-size:12.5px;font-family:"Space Mono";letter-spacing:.06em}
+.controls button:hover{border-color:var(--amber-dim)}
+.controls .primary{border-color:var(--amber-dim);color:var(--amber)}
+.controls .speed{margin-left:auto;color:var(--muted);font-family:"Space Mono";font-size:12px}
+
+/* analysis */
+.headline{font-family:"Archivo";font-weight:900;font-size:26px;margin:6px 0 4px}
+.headline .win{color:var(--good)}
+.subline{color:var(--muted);font-size:13px;font-family:"Space Mono";margin-bottom:8px}
+.panelbox{border:1px solid var(--line);background:var(--card);border-radius:14px;padding:18px;margin-top:14px}
+.panelbox h3{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;font-weight:700}
+.phrow{display:grid;grid-template-columns:88px 1fr 62px;align-items:center;gap:10px;margin-bottom:9px}
+.phrow .pl{font-size:12px;color:var(--muted);font-family:"Space Mono"}
+.phrow .bar{height:15px;border-radius:5px;background:var(--panel);overflow:hidden}
+.phrow .fill{height:100%;border-radius:5px}
+.phrow .pv{font-size:12px;text-align:right;font-family:"Space Mono"}
+.pcols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:640px){.pcols{grid-template-columns:1fr}}
+.tp{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.tp:last-child{border:none}
+.tp .ov{font-family:"Archivo";font-weight:900;color:var(--amber);width:52px;font-size:15px}
+.tp .sc{font-family:"Space Mono";font-size:13px}
+.tp .wp{margin-left:auto;font-family:"Space Mono";font-size:12px;color:var(--muted)}
+.part{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.part:last-child{border:none}
+.part .r{font-family:"Archivo";font-weight:700}
+/* manhattan (over-by-over) */
+.manh{display:flex;align-items:flex-end;gap:3px;height:96px;margin-top:6px}
+.manh .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;min-width:0}
+.manh .bar2{width:100%;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--cyan),var(--cyan-dim));min-height:2px;position:relative}
+.manh .bar2.big{background:linear-gradient(180deg,var(--amber),var(--amber-dim))}
+.manh .wk{position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--ball)}
+.manh .onum{font-family:"Space Mono";font-size:8.5px;color:var(--muted)}
+.manhcap{display:flex;justify-content:space-between;font-family:"Space Mono";font-size:10.5px;color:var(--muted);letter-spacing:.08em;margin-bottom:2px}
+
+/* scorecard table */
+.sctable{width:100%;border-collapse:collapse;font-size:12.5px}
+.sctable th{text-align:right;font-family:"Space Mono";font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;padding:0 0 9px}
+.sctable th:first-child{text-align:left}
+.sctable td{padding:7px 0;border-top:1px solid var(--line);text-align:right;font-family:"Space Mono"}
+.sctable td:first-child{text-align:left;font-family:"Space Grotesk"}
+.sctable td .out{color:var(--muted);font-size:10px;margin-left:6px}
+.sctable td.r{font-family:"Archivo";font-weight:700;color:var(--text)}
+.sctable .hi{color:var(--amber)}
+
+/* strike rotation */
+.rot{display:flex;height:24px;border-radius:7px;overflow:hidden;margin-top:4px;border:1px solid var(--line)}
+.rot .r1{background:var(--panel)} .rot .r2{background:linear-gradient(90deg,var(--cyan-dim),var(--cyan))} .rot .r3{background:linear-gradient(90deg,var(--amber-dim),var(--amber))}
+.rot span{display:flex;align-items:center;justify-content:center;font-family:"Space Mono";font-size:10px;color:#0A111F;font-weight:700;min-width:0;overflow:hidden}
+.rot .r1 span{color:var(--muted)}
+.rotleg{display:flex;gap:16px;margin-top:8px;font-family:"Space Mono";font-size:11px;color:var(--muted)}
+.rotleg b{color:var(--text);font-weight:400}
+.footer{margin-top:40px;text-align:center;font-family:"Space Mono";font-size:11px;color:var(--muted);letter-spacing:.1em}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>window.DEMO_DATA = /*__DEMO_DATA__*/[];</script>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef} = React;
+
+/* ---- CONFIG ----------------------------------------------------------------
+   This page and the prediction API are served by the SAME service, so the API
+   is same-origin: leave API_BASE as "" and the frontend calls /live, /predict,
+   /api/matches directly (no CORS, no URL to configure).
+   Set DEMO_MODE:false to switch from the baked demo to real live matches.      */
+const CONFIG = {
+  DEMO_MODE: false,        // false = real live matches from your scorer; true = baked demo
+  API_BASE: "",            // same origin — the service serves this page + the API
+};
+const apiGet = (path) =>
+  fetch((CONFIG.API_BASE || "") + path).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); });
+const apiPost = (path, body) =>
+  fetch((CONFIG.API_BASE || "") + path, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(r => { if(!r.ok) throw new Error(r.status); return r.json(); });
+
+/* reconstruct one delivery by diffing two /score snapshots (same logic as server) */
+function ballFromSnaps(prev, cur){
+  const pe = prev ? (prev.extras||{}) : {};
+  const ce = cur.extras||{};
+  const runsDelta = (cur.runs||0) - (prev ? (prev.runs||0) : 0);
+  const wide = (ce.wides||0) - (pe.wides||0);
+  const nb   = (ce.noballs||0) - (pe.noballs||0);
+  const exTot= (ce.total||0) - (prev ? (pe.total||0) : 0);
+  return {
+    runs_of_bat: Math.max(runsDelta - exTot, 0),
+    extras: Math.max(exTot,0),
+    is_wicket: (cur.wickets||0) > (prev ? (prev.wickets||0) : 0) ? 1 : 0,
+    is_legal: (wide>0 || nb>0) ? 0 : 1,
+  };
+}
+
+const DATA = window.DEMO_DATA;
+const pct = x => Math.round(x*100);
+
+/* Convert a /live API response into a timeline entry (same shape as demo data),
+   so all the existing rendering (worm, Manhattan, win bar) works unchanged. */
+function liveEntry(prev, L){
+  const isChase = L.innings === 2;
+  return {
+    inn: L.innings, bb: L.balls_bowled,
+    over: Math.round(L.balls_bowled/6*10)/10,
+    runs: L.runs, wkts: L.wkts, crr: L.crr, rrr: L.rrr,
+    need: L.runs_to_win, target: L.target,
+    bat: L.batting_team, bowl: L.bowling_team,
+    wp: isChase ? (L.win_probability ? L.win_probability[L.batting_team] : undefined) : undefined,
+    proj: !isChase ? L.projected_score : undefined,
+    rob: prev ? Math.max(L.runs - prev.runs, 0) : L.runs,
+    ex: 0,
+    w: prev ? Math.max(L.wkts - prev.wkts, 0) : L.wkts,
+  };
+}
+
+/* ---------- Worm (win-probability line) ---------- */
+function Worm({points, live}){
+  const W=520,H=120,pad=6;
+  if(!points.length) return <div className="worm"><div className="cap"><span>WIN PROBABILITY</span></div>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="120"/></div>;
+  const n=points.length, last=points[points.length-1];
+  const X=i=> pad + (i/Math.max(n-1,1))*(W-2*pad);
+  const Y=wp=> pad + (1-wp)*(H-2*pad);
+  let d=`M ${X(0)} ${Y(points[0])}`;
+  points.forEach((p,i)=> d+=` L ${X(i)} ${Y(p)}`);
+  const area=`${d} L ${X(n-1)} ${H-pad} L ${X(0)} ${H-pad} Z`;
+  return <div className="worm">
+    <div className="cap"><span>WIN PROBABILITY · CHASING TEAM</span><span>{pct(last)}%</span></div>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="120" preserveAspectRatio="none">
+      <line x1={pad} y1={Y(0.5)} x2={W-pad} y2={Y(0.5)} stroke="#22334f" strokeWidth="1" strokeDasharray="3 4"/>
+      <path d={area} fill="rgba(255,176,32,.10)"/>
+      <path d={d} fill="none" stroke="#FFB020" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"/>
+      {live && <circle cx={X(n-1)} cy={Y(last)} r="4" fill="#FFB020"/>}
+    </svg>
+  </div>;
+}
+
+/* ---------- Last balls ---------- */
+function LastBalls({balls}){
+  return <div className="lastballs"><span className="k">LAST 6</span>
+    {balls.map((b,i)=>{
+      let cls="chip", t=String(b.rob+b.ex);
+      if(b.w){cls+=" w";t="W";} else if(b.rob===6){cls+=" six";} else if(b.rob===4){cls+=" four";}
+      else if(b.rob+b.ex===0){cls+=" dot";t="•";}
+      return <div key={i} className={cls}>{t}</div>;
+    })}</div>;
+}
+
+/* ---------- over-by-over (Manhattan) ---------- */
+function Manhattan({overs, title}){
+  if(!overs.length) return null;
+  const max=Math.max(6,...overs.map(o=>o.runs));
+  return <div className="worm"><div className="manhcap"><span>{title||'OVER BY OVER'}</span>
+      <span>{overs.length} ov</span></div>
+    <div className="manh">{overs.map((o,i)=><div className="col" key={i}>
+      <div className={"bar2"+(o.runs>=12?" big":"")} style={{height:(o.runs/max*80+2)+'px'}}>
+        {o.wkts>0 && Array.from({length:o.wkts}).map((_,j)=><span className="wk" key={j} style={{left:(35+j*30)+'%'}}/>)}
+      </div>
+      <span className="onum">{o.over}</span>
+    </div>)}</div>
+  </div>;
+}
+/* build over list from a timeline slice (for the live view) */
+function oversFromTimeline(tl){
+  const out=[]; let over=0,runs=0,wk=0,legalPrev=0;
+  tl.forEach(b=>{
+    runs+=b.rob+b.ex; wk+=b.w;
+    const legal = b.bb>legalPrev; legalPrev=b.bb;
+    if(legal && b.bb%6===0){ out.push({over:b.bb/6,runs,wkts:wk}); runs=0;wk=0; }
+  });
+  if(runs>0||wk>0) out.push({over:Math.ceil(legalPrev/6),runs,wkts:wk});
+  return out;
+}
+function rotationFromTimeline(tl){
+  let dot=0,rot=0,bd=0,legal=0,prev=0;
+  tl.forEach(b=>{ const lg=b.bb>prev; prev=b.bb; if(!lg)return; legal++;
+    const t=b.rob+b.ex; if(t===0)dot++; else if(b.rob===4||b.rob===6)bd++; else rot++; });
+  const p=x=>legal?Math.round(x/legal*1000)/10:0;
+  return {dot_pct:p(dot),rotated_pct:p(rot),boundary_pct:p(bd),legal_balls:legal};
+}
+
+/* ---------- scorecards ---------- */
+function BattingCard({rows,title}){
+  const rs=[...rows].sort((a,b)=>b.runs-a.runs);
+  return <div className="panelbox"><h3>{title}</h3>
+    <table className="sctable"><thead><tr>
+      <th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th><th>Bdry%</th></tr></thead>
+    <tbody>{rs.map((s,i)=><tr key={i}>
+      <td>{s.batter}{!s.out&&<span className="out">not out</span>}</td>
+      <td className="r">{s.runs}</td><td>{s.balls}</td><td>{s.fours}</td><td>{s.sixes}</td>
+      <td className={s.sr>=150?"hi":""}>{s.sr}</td><td>{s.boundary_pct}</td></tr>)}</tbody></table>
+  </div>;
+}
+function BowlingCard({rows,title}){
+  const rs=[...rows].sort((a,b)=>b.wkts-a.wkts||a.economy-b.economy);
+  return <div className="panelbox"><h3>{title}</h3>
+    <table className="sctable"><thead><tr>
+      <th>Bowler</th><th>O</th><th>R</th><th>W</th><th>Econ</th><th>Dot%</th></tr></thead>
+    <tbody>{rs.map((s,i)=><tr key={i}>
+      <td>{s.bowler}</td><td>{s.overs}</td><td>{s.runs}</td>
+      <td className="r">{s.wkts}</td>
+      <td className={s.economy<=7.5?"hi":""}>{s.economy}</td><td>{s.dot_pct}</td></tr>)}</tbody></table>
+  </div>;
+}
+function RotationBar({rot}){
+  return <div>
+    <div className="rot">
+      <div className="r1" style={{width:rot.dot_pct+'%'}}><span>{rot.dot_pct>7?rot.dot_pct+'%':''}</span></div>
+      <div className="r2" style={{width:rot.rotated_pct+'%'}}><span>{rot.rotated_pct>7?rot.rotated_pct+'%':''}</span></div>
+      <div className="r3" style={{width:rot.boundary_pct+'%'}}><span>{rot.boundary_pct>7?rot.boundary_pct+'%':''}</span></div>
+    </div>
+    <div className="rotleg"><span>■ dots <b>{rot.dot_pct}%</b></span><span style={{color:'var(--cyan)'}}>■ rotated <b>{rot.rotated_pct}%</b></span><span style={{color:'var(--amber)'}}>■ boundaries <b>{rot.boundary_pct}%</b></span></div>
+  </div>;
+}
+
+/* ---------- Live match view ---------- */
+function LiveView({match, onBack}){
+  const isLiveApi = match.isLive && !CONFIG.DEMO_MODE;
+  const [liveTl,setLiveTl]=useState([]);
+  const [liveErr,setLiveErr]=useState(null);
+  const [status,setStatus]=useState('live');
+  const [idx,setIdx]=useState(((match.timeline&&match.timeline.length)||1)-1);
+  const [playing,setPlaying]=useState(false);
+  const [speed,setSpeed]=useState(1);
+  const stateRef = useRef({prevSnap:{}, raw:{1:[],2:[]}, entries:[]});
+
+  // demo replay: start midway
+  useEffect(()=>{ if(match.isLive && !isLiveApi){ setIdx(Math.floor(match.timeline.length*0.62)); setPlaying(true);} },[]);
+  // demo replay: tick
+  useEffect(()=>{
+    if(isLiveApi||!playing) return;
+    if(idx>=match.timeline.length-1){ setPlaying(false); return; }
+    const t=setTimeout(()=>setIdx(i=>Math.min(i+1,match.timeline.length-1)), 650/speed);
+    return ()=>clearTimeout(t);
+  },[playing,idx,speed,isLiveApi]);
+  // live API: poll /score, diff to a timeline, predict
+  useEffect(()=>{
+    if(!isLiveApi) return;
+    let stop=false;
+    const poll=async()=>{
+      try{
+        const s=await apiGet(`/api/matches/${match.id}/score`);
+        if(stop) return;
+        setStatus(s.status||'live');
+        const inn=s.innings||1;
+        const S=stateRef.current;
+        if(!S.raw[inn]) S.raw[inn]=[];
+        const totalDeliv=(s.ballsBowled||0)+((s.extras&&(s.extras.wides+s.extras.noballs))||0);
+        // a new delivery happened for this innings?
+        if(totalDeliv > S.raw[inn].length){
+          const ball=ballFromSnaps(S.prevSnap[inn], s);
+          S.raw[inn].push(ball);
+        }
+        S.prevSnap[inn]=s;
+        // predict from the accumulated timeline for this innings
+        let pred={};
+        try{ pred=await apiPost('/predict',{innings:inn,batting_team:s.batting,bowling_team:s.bowling,
+              venue:s.venue||null,target:s.target||null,
+              total_balls:((s.ballsBowled||0)+(s.ballsRemaining||0))||120,
+              timeline:S.raw[inn]}); }catch(e){}
+        const isChase=inn===2;
+        const entry={inn, bb:s.ballsBowled||0, over:s.oversBowled||(Math.round((s.ballsBowled||0)/6*10)/10),
+          runs:s.runs||0, wkts:s.wickets||0, crr:s.runRate||0,
+          rrr:(s.required&&s.required.balls)? Math.round((s.required.runs/(s.required.balls/6))*100)/100:0,
+          need:(s.required&&s.required.runs)||0, target:s.target,
+          bat:s.batting, bowl:s.bowling,
+          wp:isChase&&pred.win_probability? pred.win_probability[s.batting] : undefined,
+          proj:!isChase? (pred.projected_score||0) : undefined,
+          rob:(S.raw[inn][S.raw[inn].length-1]||{}).runs_of_bat||0,
+          ex:(S.raw[inn][S.raw[inn].length-1]||{}).extras||0,
+          w:(S.raw[inn][S.raw[inn].length-1]||{}).is_wicket||0};
+        // replace last entry if same ball, else append
+        const E=S.entries; const last=E[E.length-1];
+        if(last && last.inn===entry.inn && last.bb===entry.bb) E[E.length-1]=entry; else E.push(entry);
+        setLiveTl([...E]); setLiveErr(null);
+        if(s.status==='complete') return;
+      }catch(e){ if(!stop) setLiveErr(String(e.message||e)); }
+      if(!stop) setTimeout(poll, 2000);
+    };
+    poll();
+    return ()=>{ stop=true; };
+  },[isLiveApi, match.id]);
+
+  const tl = isLiveApi ? liveTl : match.timeline;
+  if(isLiveApi && tl.length===0){
+    return <div><button className="back" onClick={onBack}>&larr; BACK</button>
+      <div className="board"><div className="venue">{match.teamA} v {match.teamB}</div>
+      <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>
+        {liveErr ? 'Connecting to prediction service… ('+liveErr+')' : 'Waiting for the first ball…'}</p>
+      </div></div>;
+  }
+  const curIdx = isLiveApi ? tl.length-1 : idx;
+  const cur=tl[curIdx];
+  const isChase=cur.inn===2;
+  const batTeam = cur.bat || (isChase? match.teamB : match.teamA);
+  const bowlTeam= cur.bowl || (isChase? match.teamA : match.teamB);
+  const target = (cur.target!=null? cur.target : match.target);
+  const last6 = tl.slice(Math.max(0,curIdx-5),curIdx+1);
+  const wormPts = tl.filter((p,i)=> p.inn===2 && i<=curIdx).map(p=>p.wp).filter(x=>x!=null);
+  const wp = isChase? cur.wp : null;
+
+  return <div>
+    <button className="back" onClick={onBack}>&larr; BACK</button>
+    {isLiveApi && <div style={{fontFamily:'Space Mono',fontSize:'11px',color:status==='complete'?'var(--muted)':'var(--ball)',marginBottom:'8px',letterSpacing:'.1em'}}>
+      {status==='complete'?'■ MATCH COMPLETE':'● LIVE — updating every 2s'}{liveErr?' (reconnecting…)':''}</div>}
+    <div className="board">
+      <div className="venue">{match.venue||(match.teamA+' v '+match.teamB)}</div>
+      <div className="teams">
+        <div className="team bat">
+          <div className="lbl">{batTeam} · batting</div>
+          <div className="big num">{cur.runs}<span style={{fontSize:'26px',color:'var(--muted)'}}>/{cur.wkts}</span></div>
+          <div className="ov">{cur.over} ov · {isChase? `target ${target}`:'1st innings'}</div>
+        </div>
+        <div className="team chase">
+          <div className="lbl">{bowlTeam} · bowling</div>
+          {isChase && cur.need!=null
+            ? <div className="need">need <b>{cur.need}</b></div>
+            : <div className="need mono" style={{color:'var(--muted)'}}>{bowlTeam} bowling</div>}
+        </div>
+      </div>
+      <div className="rates">
+        <div>CRR <b>{cur.crr}</b></div>
+        {isChase && <div>RRR <b>{cur.rrr}</b></div>}
+        <div>OVERS <b>{cur.over}</b></div>
+      </div>
+
+      {isChase && wp!=null
+        ? <div className="winbar">
+            <div className="track">
+              <div className="seg a" style={{width:pct(wp)+'%'}}>{wp>0.14&&<span>{pct(wp)}%</span>}</div>
+              <div className="seg b" style={{width:pct(1-wp)+'%'}}>{(1-wp)>0.14&&<span>{pct(1-wp)}%</span>}</div>
+            </div>
+            <div className="names"><span className="an">{batTeam}</span><span className="bn">{bowlTeam}</span></div>
+          </div>
+        : (!isChase && cur.proj!=null) ? <div className="proj"><span className="k">Projected final</span>
+            <span className="val num">{Math.round(cur.proj)}</span>
+            <span className="rng">± ~{cur.bb<36?32:cur.bb<90?26:21}</span></div> : null}
+
+      <div className="callout">
+        <div className="k">Prediction</div>
+        <div className="v">{isChase
+          ? (wp!=null? `${wp>=0.5?batTeam:bowlTeam} favoured — ${pct(wp>=0.5?wp:1-wp)}% to win.`:'Building prediction…')
+          : (cur.proj!=null? `${batTeam} tracking toward ${Math.round(cur.proj)}. ${cur.wkts} down at ${cur.over} overs.`:'Building prediction…')}</div>
+      </div>
+
+      <LastBalls balls={last6}/>
+    </div>
+
+    {wormPts.length>0 && <Worm points={wormPts} live={isLiveApi&&status!=='complete'}/>}
+
+    <Manhattan overs={oversFromTimeline(tl.slice(0,curIdx+1).filter(p=>p.inn===cur.inn))}
+      title={`OVER BY OVER · ${batTeam}`}/>
+
+    <div className="panelbox" style={{marginTop:14}}>
+      <h3>This innings so far</h3>
+      <RotationBar rot={rotationFromTimeline(tl.slice(0,curIdx+1).filter(p=>p.inn===cur.inn))}/>
+    </div>
+
+    {!isLiveApi && <div className="controls">
+      <button className="primary" onClick={()=>{ if(idx>=tl.length-1) setIdx(0); setPlaying(p=>!p);}}>
+        {playing?'❚❚ PAUSE':'▶ REPLAY'}</button>
+      <button onClick={()=>setIdx(i=>Math.max(0,i-1))}>◀ BALL</button>
+      <button onClick={()=>setIdx(i=>Math.min(tl.length-1,i+1))}>BALL ▶</button>
+      <button onClick={()=>{setPlaying(false);setIdx(tl.length-1);}}>END</button>
+      <span className="speed" onClick={()=>setSpeed(s=> s===1?2:s===2?4:1)} tabIndex="0"
+        role="button" style={{cursor:'pointer'}}>SPEED ×{speed}</span>
+    </div>}
+  </div>;
+}
+
+/* ---------- Analysis view ---------- */
+function PhaseBars({title, ph, max}){
+  const order=['Powerplay','Middle','Death'];
+  const col={Powerplay:'var(--cyan)',Middle:'var(--amber)',Death:'var(--ball)'};
+  return <div className="panelbox"><h3>{title}</h3>
+    {order.map(p=><div className="phrow" key={p}>
+      <span className="pl">{p}</span>
+      <div className="bar"><div className="fill" style={{width:(ph[p].runs/max*100)+'%',background:col[p]}}/></div>
+      <span className="pv">{ph[p].runs}/{ph[p].wkts}</span>
+    </div>)}
+  </div>;
+}
+function Analysis({match, onBack}){
+  const r=match.report, s2=r.second_innings, s1=r.first_innings;
+  const wormPts=s2? s2.win_prob_trajectory.map(t=>t.wp):[];
+  const maxRuns=Math.max(...['Powerplay','Middle','Death'].flatMap(p=>[s1.phase_breakdown[p].runs, s2?s2.phase_breakdown[p].runs:0]));
+  return <div>
+    <button className="back" onClick={onBack}>&larr; BACK</button>
+    <div className="subline">{r.venue}</div>
+    <div className="headline">{match.teamA} v {match.teamB} — <span className="win">{r.result}</span></div>
+    <div className="subline">{match.teamA} {s1.score} · {match.teamB} {s2?s2.score:''} (target {match.target})</div>
+
+    {s2 && <div className="worm" style={{marginTop:16}}>
+      <div className="cap"><span>WIN PROBABILITY WORM · {match.teamB}</span><span>full match</span></div>
+      <Worm points={wormPts} live={false}/>
+    </div>}
+
+    {s2 && <div className="panelbox"><h3>Turning points</h3>
+      {s2.turning_points.map((t,i)=><div className="tp" key={i}>
+        <span className="ov">{t.over}</span><span className="sc">{t.score}</span>
+        <span className="wp">win prob → {pct(t.win_prob_after)}% · swing {pct(t.swing)}%</span>
+      </div>)}
+    </div>}
+
+    <Manhattan overs={s1.over_by_over} title={`OVER BY OVER · ${match.teamA}`}/>
+    {s2 && <Manhattan overs={s2.over_by_over} title={`OVER BY OVER · ${match.teamB}`}/>}
+
+    <BattingCard rows={s1.batting} title={`${match.teamA} · batting`}/>
+    <div className="panelbox"><h3>{match.teamA} · strike rotation</h3><RotationBar rot={s1.strike_rotation}/></div>
+    <BowlingCard rows={s1.bowling} title={`${match.teamB} · bowling`}/>
+    {s2 && <BattingCard rows={s2.batting} title={`${match.teamB} · batting`}/>}
+    {s2 && <div className="panelbox"><h3>{match.teamB} · strike rotation</h3><RotationBar rot={s2.strike_rotation}/></div>}
+    {s2 && <BowlingCard rows={s2.bowling} title={`${match.teamA} · bowling`}/>}
+
+    <div className="pcols">
+      <PhaseBars title={`${match.teamA} · phases`} ph={s1.phase_breakdown} max={maxRuns}/>
+      {s2 && <PhaseBars title={`${match.teamB} · phases`} ph={s2.phase_breakdown} max={maxRuns}/>}
+    </div>
+
+    <div className="pcols">
+      <div className="panelbox"><h3>{match.teamA} · top stands</h3>
+        {s1.top_partnerships.map((p,i)=><div className="part" key={i}>
+          <span>Wicket {i+1}</span><span className="r">{p.runs} <span style={{color:'var(--muted)',fontWeight:400}}>({p.balls})</span></span></div>)}
+      </div>
+      {s2 && <div className="panelbox"><h3>{match.teamB} · top stands</h3>
+        {s2.top_partnerships.map((p,i)=><div className="part" key={i}>
+          <span>Wicket {i+1}</span><span className="r">{p.runs} <span style={{color:'var(--muted)',fontWeight:400}}>({p.balls})</span></span></div>)}
+      </div>}
+    </div>
+  </div>;
+}
+
+/* ---------- Home ---------- */
+/* ---------- Home ---------- */
+function Home({onOpen}){
+  return CONFIG.DEMO_MODE ? <HomeDemo onOpen={onOpen}/> : <HomeLive onOpen={onOpen}/>;
+}
+
+function HomeDemo({onOpen}){
+  if(!DATA || !DATA.length) return <p style={{color:'var(--muted)',fontFamily:'Space Mono'}}>No demo data loaded.</p>;
+  const live=DATA[0]; const past=DATA.slice(1);
+  const midIdx=Math.floor(live.timeline.length*0.62); const c=live.timeline[midIdx];
+  return <div>
+    <button className="livetile" onClick={()=>onOpen({...live,isLive:true},'live')}>
+      <div className="livehead"><span className="pulse"/><span className="livelabel">LIVE NOW</span></div>
+      <div className="matchup">{live.teamA} v {live.teamB} · {live.venue.split(',')[0]}</div>
+      <div className="livescore">
+        <div className="num">{c.runs}/{c.wkts}</div>
+        <div className="ov">{c.over} ov · {c.inn===2?`need ${c.need}`:'1st innings'}</div>
+      </div>
+      <div className="tilehint">Tap for live score, prediction and analysis →</div>
+    </button>
+
+    <div className="sec"><h2>Past matches</h2><div className="rule"/></div>
+    <div className="grid">
+      {past.map(m=><button className="card" key={m.id} onClick={()=>onOpen({...m,isLive:false},'analysis')}>
+        <div className="vs">{m.teamA} v {m.teamB}</div>
+        <div className="res">{m.result}</div>
+        <div className="meta"><span>{m.venue.split(',')[0]}</span><span className="arrow">analysis →</span></div>
+      </button>)}
+    </div>
+  </div>;
+}
+
+function HomeLive({onOpen}){
+  const [matches,setMatches]=useState(null);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{
+    let stop=false;
+    const load=()=>apiGet('/api/matches')
+      .then(d=>{ if(!stop){ setMatches(Array.isArray(d)?d:(d.matches||d.live||[]).concat(d.played||[])); setErr(null); } })
+      .catch(e=>{ if(!stop) setErr(String(e.message||e)); });
+    load(); const iv=setInterval(load,5000);
+    return ()=>{ stop=true; clearInterval(iv); };
+  },[]);
+  const nm=m=>{
+    const inns=(m.innings||[]); const cur=inns[inns.length-1]||{};
+    return { id:m.id||m._id||m.matchId,
+      teamA:(m.teams&&m.teams.A)||m.teamA||m.battingFirst||'Team A',
+      teamB:(m.teams&&m.teams.B)||m.teamB||'Team B',
+      venue:m.venue||'', status:m.status, result:m.result,
+      score:cur.runs!=null?`${cur.runs}/${cur.wickets}`:'', over:cur.overs||'', batting:cur.battingTeam||'' };
+  };
+  if(err) return <div className="board"><div className="venue">Could not reach the prediction service.</div>
+    <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>Error: {err}. Open /debug/scorer to check the scorer link, or /health to confirm the service is up.</p></div>;
+  if(!matches) return <p style={{color:'var(--muted)',fontFamily:'Space Mono'}}>Loading matches…</p>;
+  const norm=matches.map(nm);
+  const liveOnes=norm.filter(m=>m.status==='live');
+  const pastOnes=norm.filter(m=>m.status==='complete');
+  return <div>
+    {liveOnes.length===0 && <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'13px'}}>No live match right now — start scoring one in your scorer and it appears here.</p>}
+    {liveOnes.map(m=>
+      <button className="livetile" key={m.id} style={{marginBottom:'12px'}} onClick={()=>onOpen({...m,isLive:true},'live')}>
+        <div className="livehead"><span className="pulse"/><span className="livelabel">LIVE NOW</span></div>
+        <div className="matchup">{m.teamA} v {m.teamB}{m.venue?' · '+m.venue.split(',')[0]:''}</div>
+        {m.score && <div className="livescore"><div className="num">{m.score}</div>
+          <div className="ov">{m.over} ov · {m.batting}</div></div>}
+        <div className="tilehint">Tap for live score and prediction →</div>
+      </button>)}
+    {pastOnes.length>0 && <div className="sec"><h2>Completed matches</h2><div className="rule"/></div>}
+    <div className="grid">
+      {pastOnes.map(m=><button className="card" key={m.id} onClick={()=>onOpen({...m,isLive:true},'live')}>
+        <div className="vs">{m.teamA} v {m.teamB}</div>
+        {m.result && <div className="res">{m.result}</div>}
+        <div className="meta"><span>{m.venue?m.venue.split(',')[0]:'result'}</span><span className="arrow">view →</span></div>
+      </button>)}
+    </div>
+  </div>;
+}
+
+/* ---------- App ---------- */
+function App(){
+  const [view,setView]=useState('home');
+  const [match,setMatch]=useState(null);
+  const open=(m,v)=>{setMatch(m);setView(v);};
+  const back=()=>setView('home');
+  return <div className="wrap">
+    <div className="topbar">
+      <div className="brand"><h1>Cricket<span className="dot">·</span>Predict</h1>
+        <span className="tag">REALTIME SCORE PREDICTION</span></div>
+      <span className="eyebrow">{CONFIG.DEMO_MODE?'demo data':'live'}</span>
+    </div>
+    {view==='home' && <Home onOpen={open}/>}
+    {view==='live' && <LiveView match={match} onBack={back}/>}
+    {view==='analysis' && <Analysis match={match} onBack={back}/>}
+    <div className="footer">POWERED BY LIGHTGBM · CALIBRATED WIN PROBABILITY · MAE ~21 AT DEATH</div>
+  </div>;
+}
+class ErrorBoundary extends React.Component{
+  constructor(p){ super(p); this.state={err:null}; }
+  static getDerivedStateFromError(err){ return {err}; }
+  render(){
+    if(this.state.err) return <div className="wrap">
+      <div className="board"><div className="venue">Something went wrong rendering the app.</div>
+      <p style={{color:'var(--ball)',fontFamily:'Space Mono',fontSize:'13px',whiteSpace:'pre-wrap'}}>
+        {String(this.state.err && this.state.err.message || this.state.err)}</p>
+      <p style={{color:'var(--muted)',fontFamily:'Space Mono',fontSize:'12px'}}>
+        If this mentions demo data, set DEMO_MODE:false in the CONFIG block. Otherwise check /health and /debug/scorer.</p>
+      </div></div>;
+    return this.props.children;
+  }
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
+</script>
+</body>
+</html>
