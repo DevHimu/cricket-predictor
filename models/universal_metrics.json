@@ -1,0 +1,36 @@
+{
+ "universal_score": {
+  "oof_mae_20over": 20.28,
+  "target": "remaining_runs_per_ball",
+  "features": [
+   "progress",
+   "wickets_remaining",
+   "crr",
+   "rpb_so_far",
+   "mom_rpb_l30",
+   "mom_wkts_l30",
+   "mom_dot_rate_l30",
+   "mom_bdry_rate_l30",
+   "partnership_rpb"
+  ]
+ },
+ "universal_win": {
+  "oof_auc_20over": 0.885,
+  "brier_raw": 0.162,
+  "brier_calibrated": 0.123,
+  "features": [
+   "progress",
+   "wickets_remaining",
+   "crr",
+   "rpb_so_far",
+   "mom_rpb_l30",
+   "mom_wkts_l30",
+   "mom_dot_rate_l30",
+   "mom_bdry_rate_l30",
+   "partnership_rpb",
+   "req_rpb",
+   "rate_gap",
+   "req_per_wkt"
+  ]
+ }
+}

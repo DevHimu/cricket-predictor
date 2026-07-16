@@ -9,12 +9,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
 :root{
-  --bg:#0A111F; --card:#111C31; --line:#22314F;
+  --bg:#0A111F; --card:#111C31; --line:#22314F; --glass:rgba(22,35,60,.55);
   --ink:#E8EEF9; --muted:#8FA3C4; --dim:#5E7398;
   --amber:#FFB020; --cyan:#3FC8E4; --red:#FF5568; --blue:#4C8DFF; --green:#37C98B;
 }
 *{box-sizing:border-box; margin:0; padding:0}
-body{background:var(--bg); color:var(--ink); font-family:'Space Grotesk',system-ui,sans-serif;
+body{background:radial-gradient(1100px 500px at 80% -10%, #14233F 0%, var(--bg) 55%) fixed, var(--bg); color:var(--ink); font-family:'Space Grotesk',system-ui,sans-serif;
      -webkit-font-smoothing:antialiased}
 .wrap{max-width:1080px; margin:0 auto; padding:18px 16px 60px}
 .mono{font-family:'Space Mono',monospace}
@@ -32,7 +32,7 @@ body{background:var(--bg); color:var(--ink); font-family:'Space Grotesk',system-
 .livetile{display:block; width:100%; text-align:left; background:linear-gradient(160deg,#16233C,#101B2E);
   border:1px solid #2A3C5E; border-left:3px solid var(--red); border-radius:14px; padding:16px;
   cursor:pointer; margin-bottom:12px; transition:.15s}
-.livetile:hover{border-color:var(--amber); transform:translateY(-1px)}
+.livetile:hover{border-color:var(--amber); transform:translateY(-2px); box-shadow:0 14px 30px -18px rgba(255,176,32,.35)}
 .livehead{display:flex; align-items:center; gap:7px; margin-bottom:9px}
 .pulse{width:7px; height:7px; border-radius:50%; background:var(--red); animation:p 1.4s infinite}
 @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
@@ -56,12 +56,14 @@ body{background:var(--bg); color:var(--ink); font-family:'Space Grotesk',system-
 .sec .rule{height:2px; background:linear-gradient(90deg,var(--amber),transparent);
            margin-top:6px; border-radius:2px}
 
-.board{background:linear-gradient(165deg,#16233C,#0E1829); border:1px solid #2A3C5E;
-       border-radius:16px; padding:18px; margin-bottom:14px}
+.board{background:linear-gradient(165deg,rgba(28,44,74,.85),rgba(14,24,41,.9)); border:1px solid #2E4266;
+       border-radius:18px; padding:20px; margin-bottom:14px; backdrop-filter:blur(8px);
+       box-shadow:0 18px 40px -22px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.04)}
 .venue{font-family:'Space Mono'; font-size:10px; letter-spacing:.14em; color:var(--dim);
        text-transform:uppercase; margin-bottom:12px}
 .scoreline{display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px}
-.bigscore{font-family:'Archivo'; font-weight:900; font-size:52px; line-height:1; color:var(--amber)}
+.bigscore{font-family:'Archivo'; font-weight:900; font-size:56px; line-height:1; color:var(--amber);
+          text-shadow:0 0 34px rgba(255,176,32,.35)}
 .bigscore span{font-size:24px; color:var(--muted)}
 .scoremeta{font-family:'Space Mono'; font-size:11.5px; color:var(--muted); margin-top:6px}
 .batlabel{font-size:13px; color:var(--ink); font-weight:500; margin-bottom:4px}
@@ -97,7 +99,7 @@ body{background:var(--bg); color:var(--ink); font-family:'Space Grotesk',system-
 .wprow{display:flex; justify-content:space-between; align-items:center; margin-bottom:7px}
 .wpteam{font-size:13px; font-weight:500}
 .wppct{font-family:'Archivo'; font-weight:900; font-size:22px}
-.wptrack{height:26px; border-radius:8px; overflow:hidden; display:flex; background:#0C1526;
+.wptrack{height:28px; box-shadow:inset 0 2px 6px rgba(0,0,0,.45); border-radius:8px; overflow:hidden; display:flex; background:#0C1526;
          border:1px solid var(--line)}
 .wpfill{display:flex; align-items:center; padding:0 9px; font-family:'Space Mono'; font-size:11px;
         font-weight:700; transition:width .5s cubic-bezier(.4,0,.2,1); overflow:hidden; white-space:nowrap}
@@ -115,7 +117,9 @@ body{background:var(--bg); color:var(--ink); font-family:'Space Grotesk',system-
 
 .charts{display:grid; grid-template-columns:1fr 1fr; gap:12px}
 @media(max-width:820px){.charts{grid-template-columns:1fr} .crease{grid-template-columns:1fr}}
-.chart{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px}
+.chart{background:var(--glass); border:1px solid var(--line); border-radius:14px; padding:15px;
+       backdrop-filter:blur(6px); transition:border-color .2s}
+.chart:hover{border-color:#31486F}
 .chart h3{font-family:'Space Mono'; font-size:10px; letter-spacing:.13em; color:var(--muted);
           text-transform:uppercase; margin-bottom:3px}
 .chart .sub{font-family:'Space Mono'; font-size:9.5px; color:var(--dim); margin-bottom:11px}
@@ -152,6 +156,13 @@ body{background:var(--bg); color:var(--ink); font-family:'Space Grotesk',system-
 .pbarwrap{display:flex; justify-content:center}
 .pbar{display:flex; height:9px; border-radius:5px; overflow:hidden; background:#1A2740; min-width:8%}
 .pbar>div{height:100%}
+
+/* archetype insight chip */
+.insight{display:flex; align-items:center; gap:10px; background:linear-gradient(120deg,#1B2A46,#152238);
+  border:1px solid #2E4266; border-left:3px solid var(--cyan); border-radius:12px; padding:11px 13px; margin-bottom:12px}
+.insight .ic{width:8px; height:8px; border-radius:50%; background:var(--cyan); box-shadow:0 0 10px var(--cyan)}
+.insight .it{font-family:'Archivo'; font-weight:700; font-size:14px}
+.insight .is{font-family:'Space Mono'; font-size:10px; color:var(--dim); margin-left:auto; text-align:right}
 .err{background:#2A1520; border:1px solid var(--red); border-left:3px solid var(--red);
      border-radius:11px; padding:14px; font-family:'Space Mono'; font-size:12px;
      color:#FFB8C2; line-height:1.6}
@@ -942,12 +953,12 @@ function MatchView({
     className: "projnote"
   }, "projected final", /*#__PURE__*/React.createElement("span", {
     className: "tag"
-  }, p.projection_method === 'rate_based' ? 'rate-based' : 'ML model'))), /*#__PURE__*/React.createElement("div", {
+  }, p.projection_method === 'universal_ml' ? 'universal ML' : p.projection_method === 'rate_based' ? 'rate-based' : 'ML model'))), /*#__PURE__*/React.createElement("div", {
     className: "projnote",
     style: {
       marginTop: '6px'
     }
-  }, p.projection_method === 'rate_based' ? p.innings_balls / 6 + '-over match - short-format projector, not the 20-over model' : 'LightGBM projection, about +/- 27 runs')), isChase && wp != null && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, (p.innings_balls || 120) !== 120 ? p.innings_balls / 6 + '-over match - format-agnostic model (validated MAE ~7.5 on 6-over)' : 'Universal LightGBM projection, about +/- 20 runs')), isChase && wp != null && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "wprow"
   }, /*#__PURE__*/React.createElement("div", {
     className: "wpteam"
@@ -975,7 +986,15 @@ function MatchView({
     style: {
       marginTop: '9px'
     }
-  }, txt(wp >= 0.5 ? s.batting : s.bowling), " favoured", p.innings_balls && p.innings_balls !== 120 ? ' - short format, model is outside its training range' : ''))), done && d.analysis && /*#__PURE__*/React.createElement(BestPlayers, {
+  }, txt(wp >= 0.5 ? s.batting : s.bowling), " favoured", p.innings_balls && p.innings_balls !== 120 ? ' - short format, model is outside its training range' : ''))), !done && p.insight && /*#__PURE__*/React.createElement("div", {
+    className: "insight"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "ic"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "it"
+  }, p.insight.archetype), /*#__PURE__*/React.createElement("span", {
+    className: "is"
+  }, "based on ", p.insight.similar_states, " similar match states", p.insight.historical_win_rate != null ? ' - historically won ' + Math.round(p.insight.historical_win_rate * 100) + '%' : '')), done && d.analysis && /*#__PURE__*/React.createElement(BestPlayers, {
     an: d.analysis
   }), d.analysis_error ? /*#__PURE__*/React.createElement("div", {
     className: "err"

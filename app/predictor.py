@@ -26,6 +26,97 @@ def _frame(feats, order):
 
 FULL_T20_BALLS = 120
 
+# ---- universal (format-agnostic) artifacts ----
+_uni_score = lgb.Booster(model_file=os.path.join(MODELS, "universal_score_lgbm.txt"))
+_uni_win = lgb.Booster(model_file=os.path.join(MODELS, "universal_win_lgbm.txt"))
+_uw = np.load(os.path.join(MODELS, "universal_win_calibrator.npz"))
+_clu = np.load(os.path.join(MODELS, "state_clusters.npz"))
+with open(os.path.join(MODELS, "state_clusters.json")) as _fh:
+    _clu_meta = json.load(_fh)
+
+U1 = ["progress", "wickets_remaining", "crr", "rpb_so_far", "mom_rpb_l30",
+      "mom_wkts_l30", "mom_dot_rate_l30", "mom_bdry_rate_l30", "partnership_rpb"]
+U2 = U1 + ["req_rpb", "rate_gap", "req_per_wkt"]
+
+
+def _u_row(f):
+    """Normalized feature row - MUST mirror train/train_universal.py."""
+    total = f.get("total_balls") or FULL_T20_BALLS
+    bb = max(f["balls_bowled"], 1)
+    row = {"progress": f["balls_bowled"] / total,
+           "wickets_remaining": f["wickets_remaining"],
+           "crr": f["crr"],
+           "rpb_so_far": f["total_runs"] / bb,
+           "mom_rpb_l30": f.get("mom_runs_l30", 0) / 30.0,
+           "mom_wkts_l30": f.get("mom_wkts_l30", 0),
+           "mom_dot_rate_l30": f.get("mom_dot_rate_l30", 0.0),
+           "mom_bdry_rate_l30": f.get("mom_bdry_rate_l30", 0.0),
+           "partnership_rpb": f.get("partnership_runs", 0) / max(f.get("partnership_balls", 1), 1)}
+    if f.get("target"):
+        br = max(f["balls_remaining"], 1)
+        row["req_rpb"] = f["runs_to_win"] / br
+        row["rate_gap"] = f["crr"] / 6.0 - row["req_rpb"]
+        row["req_per_wkt"] = f["runs_to_win"] / max(f["wickets_remaining"], 1)
+    return row
+
+
+def project_universal(feats):
+    """Format-agnostic projection: model predicts REMAINING runs per ball.
+
+    Validated: OOF MAE 20.3 on 20-over (beats the 21.3 blend) and 7.5 on the
+    6-over proxy (rate-based scores 20.4). Clipping rpb at 0 means it can never
+    project below the current score.
+    """
+    row = _u_row(feats)
+    rpb = float(_uni_score.predict(_frame(row, U1))[0])
+    proj = feats["total_runs"] + max(rpb, 0.0) * feats["balls_remaining"]
+    return round(proj, 1)
+
+
+def predict_universal_win(feats):
+    """Format-agnostic calibrated chase win probability.
+
+    Feasibility clamp: trees saturate outside their training range even in
+    normalized space, so a chase needing 6+ runs per BALL was scoring ~0.44.
+    Measured from the training data: no chase was ever won from req_rpb > 6.0
+    (that is literally a six every ball); the 99th percentile among won chases
+    is 2.29, and empirical win rate beyond 2.5 is 2.7%. The model's output is
+    capped by a monotone bound built from those measurements.
+    """
+    row = _u_row(feats)
+    raw = float(_uni_win.predict(_frame(row, U2))[0])
+    p = float(np.interp(raw, _uw["x"], _uw["y"]))
+    req = row.get("req_rpb", 0.0)
+    if req >= 6.0:                       # more than a six per ball: gone
+        cap = 0.005
+    elif req > 2.3:                      # p99 of won chases -> empirical decay
+        cap = max(0.005, 0.10 * (6.0 - req) / 3.7)
+    else:
+        cap = 1.0
+    return min(max(min(p, cap), 0.005), 0.995)
+
+
+def state_insight(feats, innings):
+    """UNSUPERVISED archetype: nearest KMeans cluster to the live state, with
+    what historically happened from states like it. No labels used to fit."""
+    row = _u_row(feats)
+    try:
+        if innings == 2 and feats.get("target"):
+            z = np.array([row[k] for k in _clu_meta["chase_features"]], float)
+            zn = (z - _clu["mu2"]) / _clu["sd2"]
+            c = int(np.argmin(((zn - _clu["c1"]) ** 2).sum(1)))
+            st = _clu_meta["chase"][c]
+            return {"archetype": st["label"], "similar_states": st["n"],
+                    "historical_win_rate": st["win_rate"]}
+        z = np.array([row[k] for k in _clu_meta["batting_features"]], float)
+        zn = (z - _clu["mu1"]) / _clu["sd1"]
+        c = int(np.argmin(((zn - _clu["c0"]) ** 2).sum(1)))
+        st = _clu_meta["batting"][c]
+        return {"archetype": st["label"], "similar_states": st["n"],
+                "typical_remaining_rpb": st["rem_rpb"]}
+    except Exception:
+        return None
+
 def predict_projected_score(feats):
     row = _encode(feats, _cfg["maps_inn1"])
     val = float(_score_model.predict(_frame(row, FEATS1))[0])
@@ -126,21 +217,29 @@ def predict(feats, innings):
     """Route by innings. Returns a serving-ready dict."""
     if innings == 1:
         total = feats.get("total_balls") or FULL_T20_BALLS
-        if total == FULL_T20_BALLS:
-            proj, method = project_blended(feats), "ml_blend"
-        else:
-            proj, method = project_short_format(feats), "rate_based"
+        proj, method = project_universal(feats), "universal_ml"
         proj = max(proj, float(feats["total_runs"]))   # can never finish below now
         return {"innings": 1, "projected_score": proj,
                 "projection_method": method,
                 "innings_balls": total,
                 "current": f"{feats['total_runs']}/{feats['total_wickets']}",
-                "balls_bowled": feats["balls_bowled"], "crr": feats["crr"]}
-    p = predict_win_prob(feats)
+                "balls_bowled": feats["balls_bowled"], "crr": feats["crr"],
+                "insight": state_insight(feats, 1)}
+    total = feats.get("total_balls") or FULL_T20_BALLS
+    if total == FULL_T20_BALLS:
+        p, wmethod = predict_win_prob(feats), "ml_model"
+    else:
+        # Short/odd formats: the base classifier never saw a 6-over chase
+        # (RRR ~30 is outside its world). The universal model works on
+        # normalized pressure features, so any innings length is in-range.
+        p, wmethod = predict_universal_win(feats), "universal_ml"
+    p = round(p, 3)
     bat, bowl = feats["batting_team"], feats["bowling_team"]
     return {"innings": 2,
             "win_probability": {bat: p, bowl: round(1 - p, 3)},
+            "win_method": wmethod, "innings_balls": total,
             "current": f"{feats['total_runs']}/{feats['total_wickets']}",
             "target": feats.get("target"), "runs_to_win": feats.get("runs_to_win"),
             "balls_remaining": feats["balls_remaining"],
-            "crr": feats["crr"], "rrr": feats.get("rrr")}
+            "crr": feats["crr"], "rrr": feats.get("rrr"),
+            "insight": state_insight(feats, 2)}

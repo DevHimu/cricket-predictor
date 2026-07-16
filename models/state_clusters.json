@@ -1,0 +1,230 @@
+{
+ "chase": [
+  {
+   "n": 2391,
+   "win_rate": 0.704,
+   "centroid": [
+    0.707,
+    6.16,
+    1.521,
+    0.138,
+    1.529,
+    0.253
+   ],
+   "label": "Evenly poised"
+  },
+  {
+   "n": 1936,
+   "win_rate": 0.603,
+   "centroid": [
+    0.337,
+    7.954,
+    1.645,
+    -0.121,
+    1.323,
+    0.404
+   ],
+   "label": "Evenly poised"
+  },
+  {
+   "n": 645,
+   "win_rate": 0.757,
+   "centroid": [
+    0.078,
+    9.834,
+    1.602,
+    0.425,
+    0.605,
+    0.244
+   ],
+   "label": "In control"
+  },
+  {
+   "n": 827,
+   "win_rate": 0.163,
+   "centroid": [
+    0.795,
+    3.376,
+    3.26,
+    -1.813,
+    1.311,
+    0.348
+   ],
+   "label": "Collapse under pressure"
+  },
+  {
+   "n": 11,
+   "win_rate": 0.0,
+   "centroid": [
+    0.988,
+    3.636,
+    38.864,
+    -37.286,
+    1.582,
+    0.285
+   ],
+   "label": "Lost cause"
+  },
+  {
+   "n": 75,
+   "win_rate": 0.0,
+   "centroid": [
+    0.959,
+    3.0,
+    13.289,
+    -11.758,
+    1.42,
+    0.316
+   ],
+   "label": "Lost cause"
+  },
+  {
+   "n": 1608,
+   "win_rate": 0.831,
+   "centroid": [
+    0.427,
+    8.993,
+    1.508,
+    0.489,
+    1.947,
+    0.231
+   ],
+   "label": "In control"
+  },
+  {
+   "n": 870,
+   "win_rate": 0.528,
+   "centroid": [
+    0.106,
+    8.893,
+    1.656,
+    -0.644,
+    0.429,
+    0.615
+   ],
+   "label": "Falling behind the rate"
+  }
+ ],
+ "batting": [
+  {
+   "n": 1062,
+   "rem_rpb": 1.9525,
+   "centroid": [
+    0.742,
+    7.529,
+    1.915,
+    2.101,
+    0.173,
+    0.301
+   ],
+   "label": "Launch mode"
+  },
+  {
+   "n": 1192,
+   "rem_rpb": 1.4932,
+   "centroid": [
+    0.67,
+    4.775,
+    1.201,
+    0.992,
+    0.445,
+    0.101
+   ],
+   "label": "Rebuilding after losses"
+  },
+  {
+   "n": 1508,
+   "rem_rpb": 1.6875,
+   "centroid": [
+    0.297,
+    9.175,
+    1.97,
+    1.789,
+    0.311,
+    0.316
+   ],
+   "label": "Accelerating"
+  },
+  {
+   "n": 1521,
+   "rem_rpb": 1.5943,
+   "centroid": [
+    0.171,
+    9.036,
+    1.346,
+    0.784,
+    0.438,
+    0.183
+   ],
+   "label": "Setting a platform"
+  },
+  {
+   "n": 1260,
+   "rem_rpb": 1.8884,
+   "centroid": [
+    0.859,
+    4.72,
+    1.573,
+    1.584,
+    0.263,
+    0.198
+   ],
+   "label": "Launch mode"
+  },
+  {
+   "n": 387,
+   "rem_rpb": 1.5334,
+   "centroid": [
+    0.105,
+    8.747,
+    0.481,
+    0.208,
+    0.701,
+    0.033
+   ],
+   "label": "Bogged down"
+  },
+  {
+   "n": 1846,
+   "rem_rpb": 1.7726,
+   "centroid": [
+    0.568,
+    7.694,
+    1.634,
+    1.47,
+    0.262,
+    0.175
+   ],
+   "label": "Accelerating"
+  },
+  {
+   "n": 249,
+   "rem_rpb": 1.5853,
+   "centroid": [
+    0.066,
+    9.912,
+    2.713,
+    0.685,
+    0.257,
+    0.474
+   ],
+   "label": "Setting a platform"
+  }
+ ],
+ "chase_features": [
+  "progress",
+  "wickets_remaining",
+  "req_rpb",
+  "rate_gap",
+  "mom_rpb_l30",
+  "mom_dot_rate_l30"
+ ],
+ "batting_features": [
+  "progress",
+  "wickets_remaining",
+  "rpb_so_far",
+  "mom_rpb_l30",
+  "mom_dot_rate_l30",
+  "mom_bdry_rate_l30"
+ ]
+}
