@@ -46,23 +46,93 @@ def faced_by(balls: List[Dict[str, Any]]) -> List[Any]:
             if legal % 6 == 0:
                 over_ends[i] = True
 
+    # pair_at[i] = the last two distinct striker ids seen up to and including i
+    pair_at: List[List[Any]] = []
+    acc: List[Any] = []
+    for i in range(n):
+        sid = S[i]
+        if sid is not None:
+            if sid in acc:
+                acc.remove(sid)
+            acc.append(sid)
+            del acc[:-2]
+        pair_at.append(list(acc))
+
     faced: List[Any] = [None] * n
-    pair: List[Any] = []
     for i in range(n):
         if i == 0:
             faced[0] = S[0]          # ball 1: even runs keep the same striker
+            continue
+        prev_wicket = int(balls[i - 1].get("is_wicket") or 0)
+        if prev_wicket:
+            # The wicket ball's strikerId may name the batter just dismissed, so
+            # walking forward from it is unsafe. Infer from THIS ball's post-state
+            # instead: even runs mean the striker did not change, so faced == S[i].
+            runs_i = int(balls[i].get("runs_of_bat") or 0)
+            if runs_i % 2 == 0:
+                faced[i] = S[i]
+            else:
+                other = [p for p in pair_at[i] if p != S[i]]
+                faced[i] = other[0] if other else S[i]
         elif over_ends[i - 1]:
-            other = [p for p in pair if p != S[i - 1]]
+            other = [p for p in pair_at[i - 1] if p != S[i - 1]]
             faced[i] = other[0] if other else S[i - 1]
         else:
             faced[i] = S[i - 1]
-        sid = S[i]
-        if sid is not None:
-            if sid in pair:
-                pair.remove(sid)
-            pair.append(sid)
-            del pair[:-2]
     return faced
+
+
+def partnerships(balls: List[Dict[str, Any]], faced: List[Any],
+                 names: Dict[str, str]) -> List[Dict[str, Any]]:
+    """Partnerships, segmented by wickets.
+
+    A partnership runs from when two batters come together until one is out, so
+    the segments are simply the stretches of the innings between wickets. Each
+    one reports both batters' individual contributions plus the stand total -
+    the Cricbuzz layout: 44 (46) with 9 (16) one side and 31 (30) the other.
+    """
+    out: List[Dict[str, Any]] = []
+    cur = {"ids": [], "runs": 0, "balls": 0, "per": {}}
+    wkt = 0
+
+    def close(c, n, unbroken):
+        ids = c["ids"][:2]
+        def side(i):
+            if i >= len(ids):
+                return None
+            pid = ids[i]
+            p = c["per"].get(pid, {"runs": 0, "balls": 0})
+            return {"name": names.get(pid, pid), "runs": p["runs"], "balls": p["balls"]}
+        return {"wicket": n, "unbroken": unbroken,
+                "runs": c["runs"], "balls": c["balls"],
+                "batter1": side(0), "batter2": side(1)}
+
+    for i, b in enumerate(balls):
+        rob = int(b.get("runs_of_bat") or 0)
+        ex = int(b.get("extras") or 0)
+        et = (b.get("extra_type") or "").lower()
+        legal = int(b.get("is_legal") or 0)
+        f = faced[i]
+
+        if f and f not in cur["ids"]:
+            cur["ids"].append(f)
+        cur["runs"] += rob + ex
+        if legal:
+            cur["balls"] += 1
+        if f:
+            p = cur["per"].setdefault(f, {"runs": 0, "balls": 0})
+            p["runs"] += rob
+            if et not in WIDE:
+                p["balls"] += 1
+
+        if int(b.get("is_wicket") or 0):
+            wkt += 1
+            out.append(close(cur, wkt, False))
+            cur = {"ids": [], "runs": 0, "balls": 0, "per": {}}
+
+    if cur["balls"] or cur["runs"]:
+        out.append(close(cur, wkt + 1, True))
+    return out
 
 
 def _dots_and_overs(balls: List[Dict[str, Any]]):
@@ -101,16 +171,19 @@ def _dots_and_overs(balls: List[Dict[str, Any]]):
             if (rob + ex) == 0:
                 team_dots += 1
             if legal % 6 == 0:
+                cur["balls"] = legal
                 overs.append(dict(cur))
                 cur = {"over": len(overs) + 1, "runs": 0, "wkts": 0}
 
     if cur["runs"] or cur["wkts"]:
+        cur["balls"] = legal
         overs.append(dict(cur))
 
     cum = 0
     for o in overs:
         cum += o["runs"]
         o["cum"] = cum
+        o["crr"] = _round(cum / (o["balls"] / 6.0)) if o.get("balls") else 0.0
 
     return bat_dots, bat_faced, bowl_dots, overs, team_dots, legal, bat_runs
 
@@ -118,6 +191,9 @@ def _dots_and_overs(balls: List[Dict[str, Any]]):
 def build_innings(inn: Dict[str, Any]) -> Dict[str, Any]:
     balls = inn.get("balls") or []
     bat_dots, bat_faced, bowl_dots, overs, team_dots, legal, bat_runs = _dots_and_overs(balls)
+    names = {p.get("id") or p.get("name"): p["name"]
+             for p in (inn.get("batting_card") or [])}
+    stands = partnerships(balls, faced_by(balls), names)
 
     # ---- batting: scorer's card + dot% from the timeline ----
     batting = []
@@ -185,6 +261,7 @@ def build_innings(inn: Dict[str, Any]) -> Dict[str, Any]:
         "batting": batting,
         "bowling": bowling,
         "overs": overs,
+        "partnerships": stands,
         "dot_pct": _pct(team_dots, legal or lb),
         "boundary_pct": _pct(bdry_runs, total_runs),
         "_attribution_check": check,

@@ -31,6 +31,47 @@ def predict_projected_score(feats):
     val = float(_score_model.predict(_frame(row, FEATS1))[0])
     return round(val, 1)
 
+def project_blended(feats):
+    """Projected final score for a 20-over innings.
+
+    The ML model alone has two problems, both measured on held-out matches:
+
+      1. It cannot be crossed-checked against reality late in an innings. Tree
+         ensembles cannot extrapolate beyond their training labels, so on a
+         high-scoring innings the projection saturates - it projected 207 for a
+         side already on 214 with 2 overs left. Out-of-fold it finishes BELOW
+         the current score on 386 of 9,093 balls (4.2%).
+      2. It is beaten by simple rate extrapolation at the death (MAE 21.2 vs 8.1),
+         because by then there is little left to predict.
+
+    The ML model is still much better early (powerplay MAE 33.4 vs 65.6), when
+    the current rate is noisy and the innings shape is unknown.
+
+    So: weight the ML model early, the rate projection late, ramping between 25%
+    and 75% of the innings, then floor the result at the current score.
+
+    Measured out-of-fold (GroupKFold by match), MAE in runs:
+        phase       ML      rate    blend
+        powerplay   33.4    65.6    33.2
+        middle      26.6    25.3    20.5
+        death       21.2     8.1     8.1
+        OVERALL     27.3    33.4    21.3      <- 22% better than ML alone
+    and the blend never projects below the current score.
+    """
+    runs = feats["total_runs"]
+    left = feats["balls_remaining"]
+    total = feats.get("total_balls") or FULL_T20_BALLS
+    if left <= 0:
+        return float(runs)
+
+    ml = predict_projected_score(feats)
+    rate = project_short_format(feats)
+    progress = feats["balls_bowled"] / max(total, 1)
+    w = max(0.0, min(1.0, (progress - 0.25) / 0.5))     # 0 = pure ML, 1 = pure rate
+    proj = (1.0 - w) * ml + w * rate
+    return round(max(proj, float(runs)), 1)
+
+
 def project_short_format(feats):
     """Rate-based projection for innings that are NOT 20 overs.
 
@@ -86,9 +127,10 @@ def predict(feats, innings):
     if innings == 1:
         total = feats.get("total_balls") or FULL_T20_BALLS
         if total == FULL_T20_BALLS:
-            proj, method = predict_projected_score(feats), "ml_model"
+            proj, method = project_blended(feats), "ml_blend"
         else:
             proj, method = project_short_format(feats), "rate_based"
+        proj = max(proj, float(feats["total_runs"]))   # can never finish below now
         return {"innings": 1, "projected_score": proj,
                 "projection_method": method,
                 "innings_balls": total,

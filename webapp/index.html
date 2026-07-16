@@ -139,6 +139,19 @@ body{background:var(--bg); color:var(--ink); font-family:'Space Grotesk',system-
             text-transform:uppercase; margin-bottom:6px}
 .result .rt{font-family:'Archivo'; font-weight:700; font-size:19px}
 
+
+/* partnerships - Cricbuzz layout */
+.pships{display:flex; flex-direction:column; gap:11px}
+.pship{display:grid; grid-template-columns:1fr 1.25fr 1fr; align-items:center; gap:8px}
+.pside .pn{font-size:12px; color:var(--ink); font-weight:500; line-height:1.25}
+.pside .pv{font-family:'Space Mono'; font-size:10.5px; color:var(--dim)}
+.pside.right{text-align:right}
+.pmid{text-align:center}
+.ptot{font-family:'Archivo'; font-weight:900; font-size:15px; color:var(--ink); margin-bottom:4px}
+.ptot .unb{color:var(--amber); margin-left:1px}
+.pbarwrap{display:flex; justify-content:center}
+.pbar{display:flex; height:9px; border-radius:5px; overflow:hidden; background:#1A2740; min-width:8%}
+.pbar>div{height:100%}
 .err{background:#2A1520; border:1px solid var(--red); border-left:3px solid var(--red);
      border-radius:11px; padding:14px; font-family:'Space Mono'; font-size:12px;
      color:#FFB8C2; line-height:1.6}
@@ -310,32 +323,45 @@ function PctBars({
   }));
 }
 
-/* Cumulative runs by over. Wickets are the large dots. Inn 1 red, inn 2 blue. */
-function RunsChart({
-  series
+/* Line chart over an overs axis. Used for cumulative runs (with wicket dots)
+   and for run rate. Inn 1 red, inn 2 blue. */
+function OverLine({
+  series,
+  valKey,
+  wickets,
+  yFmt,
+  height
 }) {
   const live = (series || []).filter(s => s.overs && s.overs.length);
   if (!live.length) return /*#__PURE__*/React.createElement("div", {
     className: "empty"
   }, "No overs completed yet");
   const W = 680,
-    H = 230,
-    PT = 14,
+    H = height || 230,
+    PT = 16,
     PR = 14,
-    PB = 26,
-    PL = 34;
+    PB = 34,
+    PL = 38;
   const maxOv = Math.max.apply(null, live.map(s => s.overs.length).concat([1]));
-  const maxRun = Math.max.apply(null, live.map(s => Math.max.apply(null, s.overs.map(o => o.cum).concat([0]))).concat([10]));
+  const maxV = Math.max.apply(null, live.map(s => Math.max.apply(null, s.overs.map(o => o[valKey] || 0).concat([0]))).concat([1]));
+  const top = maxV * 1.1;
   const X = i => PL + i / Math.max(maxOv - 1, 1) * (W - PL - PR);
-  const Y = v => H - PB - v / maxRun * (H - PT - PB);
-  const ticks = [0, Math.round(maxRun / 2), maxRun];
+  const Y = v => H - PB - (v || 0) / top * (H - PT - PB);
+  const fmt = yFmt || (v => String(Math.round(v)));
+  const yTicks = [0, top / 2, top];
+  // over numbers along the x axis, thinned out so they never collide
+  const step = maxOv <= 6 ? 1 : maxOv <= 12 ? 2 : maxOv <= 20 ? 4 : Math.ceil(maxOv / 6);
+  const xTicks = [];
+  for (let i = 0; i < maxOv; i++) {
+    if (i === 0 || i === maxOv - 1 || (i + 1) % step === 0) xTicks.push(i);
+  }
   return /*#__PURE__*/React.createElement("svg", {
     viewBox: '0 0 ' + W + ' ' + H,
     style: {
       width: '100%',
       height: 'auto'
     }
-  }, ticks.map((t, i) => /*#__PURE__*/React.createElement("g", {
+  }, yTicks.map((t, i) => /*#__PURE__*/React.createElement("g", {
     key: i
   }, /*#__PURE__*/React.createElement("line", {
     x1: PL,
@@ -351,72 +377,152 @@ function RunsChart({
     fontSize: "9",
     fontFamily: "Space Mono",
     textAnchor: "end"
-  }, t))), live.map((s, si) => {
-    const pts = s.overs.map((o, i) => X(i) + ',' + Y(o.cum)).join(' ');
+  }, fmt(t)))), xTicks.map(i => /*#__PURE__*/React.createElement("g", {
+    key: 'x' + i
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: X(i),
+    y1: H - PB,
+    x2: X(i),
+    y2: H - PB + 4,
+    stroke: "#3A4C6E",
+    strokeWidth: "1"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: X(i),
+    y: H - PB + 15,
+    fill: "#8FA3C4",
+    fontSize: "9",
+    fontFamily: "Space Mono",
+    textAnchor: "middle"
+  }, live[0].overs[i] ? live[0].overs[i].over : i + 1))), live.map((sr, si) => {
+    const pts = sr.overs.map((o, i) => X(i) + ',' + Y(o[valKey])).join(' ');
     return /*#__PURE__*/React.createElement("g", {
       key: si
     }, /*#__PURE__*/React.createElement("polyline", {
       points: pts,
       fill: "none",
-      stroke: s.color,
+      stroke: sr.color,
       strokeWidth: "2.2",
       strokeLinejoin: "round",
       strokeLinecap: "round"
-    }), s.overs.map((o, i) => o.wkts > 0 ? /*#__PURE__*/React.createElement("g", {
+    }), sr.overs.map((o, i) => wickets && o.wkts > 0 ? /*#__PURE__*/React.createElement("g", {
       key: i
     }, /*#__PURE__*/React.createElement("circle", {
       cx: X(i),
-      cy: Y(o.cum),
+      cy: Y(o[valKey]),
       r: "5",
-      fill: s.color,
+      fill: sr.color,
       stroke: "#0A111F",
       strokeWidth: "1.6"
     }), o.wkts > 1 && /*#__PURE__*/React.createElement("text", {
       x: X(i),
-      y: Y(o.cum) - 9,
-      fill: s.color,
+      y: Y(o[valKey]) - 9,
+      fill: sr.color,
       fontSize: "9",
       fontFamily: "Space Mono",
       textAnchor: "middle"
     }, o.wkts)) : /*#__PURE__*/React.createElement("circle", {
       key: i,
       cx: X(i),
-      cy: Y(o.cum),
+      cy: Y(o[valKey]),
       r: "2",
-      fill: s.color,
+      fill: sr.color,
       opacity: "0.55"
     })));
   }), /*#__PURE__*/React.createElement("text", {
-    x: W / 2,
-    y: H - 6,
+    x: (W - PL) / 2 + PL,
+    y: H - 4,
     fill: "#5E7398",
     fontSize: "9",
     fontFamily: "Space Mono",
     textAnchor: "middle"
-  }, "OVERS"), /*#__PURE__*/React.createElement("g", {
+  }, "OVER"), /*#__PURE__*/React.createElement("g", {
     transform: 'translate(' + (PL + 4) + ',' + PT + ')'
-  }, live.map((s, i) => /*#__PURE__*/React.createElement("g", {
+  }, live.map((sr, i) => /*#__PURE__*/React.createElement("g", {
     key: i,
-    transform: 'translate(' + i * 150 + ',0)'
+    transform: 'translate(' + i * 160 + ',0)'
   }, /*#__PURE__*/React.createElement("line", {
     x1: "0",
     y1: "0",
     x2: "16",
     y2: "0",
-    stroke: s.color,
+    stroke: sr.color,
     strokeWidth: "2.5"
   }), /*#__PURE__*/React.createElement("circle", {
     cx: "8",
     cy: "0",
     r: "3.5",
-    fill: s.color
+    fill: sr.color
   }), /*#__PURE__*/React.createElement("text", {
     x: "21",
     y: "3.5",
     fill: "#8FA3C4",
     fontSize: "9.5",
     fontFamily: "Space Mono"
-  }, s.label)))));
+  }, sr.label)))));
+}
+
+/* Cricbuzz-style partnership rows: each batter's contribution either side of
+   the stand total, with the bar split by who scored what. */
+function Partnerships({
+  inn,
+  color1,
+  color2
+}) {
+  const ps = inn && inn.partnerships || [];
+  if (!ps.length) return /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "No partnerships yet");
+  const max = Math.max.apply(null, ps.map(p => p.runs).concat([1]));
+  return /*#__PURE__*/React.createElement("div", {
+    className: "pships"
+  }, ps.map((p, i) => {
+    const b1 = p.batter1,
+      b2 = p.batter2;
+    const r1 = b1 ? b1.runs : 0,
+      r2 = b2 ? b2.runs : 0;
+    const known = r1 + r2;
+    const w1 = known ? r1 / known * 100 : 50;
+    const w2 = known ? r2 / known * 100 : 50;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "pship",
+      key: i
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "pside"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "pn"
+    }, b1 ? short(b1.name) : '-'), /*#__PURE__*/React.createElement("div", {
+      className: "pv"
+    }, b1 ? b1.runs : 0, " (", b1 ? b1.balls : 0, ")")), /*#__PURE__*/React.createElement("div", {
+      className: "pmid"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "ptot"
+    }, p.runs, " (", p.balls, ")", p.unbroken && /*#__PURE__*/React.createElement("span", {
+      className: "unb"
+    }, "*")), /*#__PURE__*/React.createElement("div", {
+      className: "pbarwrap"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "pbar",
+      style: {
+        width: Math.max(p.runs / max * 100, 4) + '%'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: w1 + '%',
+        background: color1
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: w2 + '%',
+        background: color2
+      }
+    })))), /*#__PURE__*/React.createElement("div", {
+      className: "pside right"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "pn"
+    }, b2 ? short(b2.name) : '-'), /*#__PURE__*/React.createElement("div", {
+      className: "pv"
+    }, b2 ? b2.runs : 0, " (", b2 ? b2.balls : 0, ")")));
+  }));
 }
 function Donut({
   value,
@@ -604,8 +710,48 @@ function Analysis({
     className: "chart full"
   }, /*#__PURE__*/React.createElement("h3", null, "Cumulative runs by over"), /*#__PURE__*/React.createElement("div", {
     className: "sub"
-  }, "Large dots mark wickets", i2 ? ' - innings 1 red, innings 2 blue' : ''), /*#__PURE__*/React.createElement(RunsChart, {
-    series: series
+  }, "Large dots mark wickets", i2 ? ' - innings 1 red, innings 2 blue' : ''), /*#__PURE__*/React.createElement(OverLine, {
+    series: series,
+    valKey: "cum",
+    wickets: true
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "sec"
+  }, /*#__PURE__*/React.createElement("h2", null, "Run rate"), /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "charts"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "chart full"
+  }, /*#__PURE__*/React.createElement("h3", null, "Run rate by over"), /*#__PURE__*/React.createElement("div", {
+    className: "sub"
+  }, "Runs per over as the innings progresses", i2 ? ' - innings 1 red, innings 2 blue' : ''), /*#__PURE__*/React.createElement(OverLine, {
+    series: series,
+    valKey: "crr",
+    wickets: false,
+    height: 200,
+    yFmt: v => v.toFixed(1)
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "sec"
+  }, /*#__PURE__*/React.createElement("h2", null, "Partnerships"), /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "charts"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: i2 ? 'chart' : 'chart full'
+  }, /*#__PURE__*/React.createElement("h3", null, "Partnerships - ", txt(i1 && i1.batting_team)), /*#__PURE__*/React.createElement("div", {
+    className: "sub"
+  }, "Each batter's share of the stand. * = unbroken"), /*#__PURE__*/React.createElement(Partnerships, {
+    inn: i1,
+    color1: RED,
+    color2: "#8E2C3A"
+  })), i2 && /*#__PURE__*/React.createElement("div", {
+    className: "chart"
+  }, /*#__PURE__*/React.createElement("h3", null, "Partnerships - ", txt(i2.batting_team)), /*#__PURE__*/React.createElement("div", {
+    className: "sub"
+  }, "Each batter's share of the stand. * = unbroken"), /*#__PURE__*/React.createElement(Partnerships, {
+    inn: i2,
+    color1: BLUE,
+    color2: "#2A4E8F"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "sec"
   }, /*#__PURE__*/React.createElement("h2", null, "Batting & bowling", i2 ? ' - 1st vs 2nd innings' : ''), /*#__PURE__*/React.createElement("div", {
