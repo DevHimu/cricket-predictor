@@ -1,37 +1,66 @@
-"""Turns the scorer's /api/matches/:id payload into a flat, normalized ball list.
+"""Reads the cricket-scorer's /api/matches/:id payload.
 
-The scorer's exact timeline shape is the one thing this project does not control,
-so this adapter is deliberately defensive: it searches the payload for the ball
-list wherever it lives, and maps field names from a set of known aliases.
+Written against the real shape (confirmed 2026-07):
 
-If your scorer uses different names, `describe_payload()` (exposed at
-/debug/timeline/{id}) reports exactly what was found so the aliases below can be
-extended in one place.
+  {
+    id, status, overs, venue, teams:{A,B}, battingFirst, currentInnings, result,
+    innings: [
+      { number, battingSide, bowlingSide, battingTeamName, bowlingTeamName,
+        runs, wickets, legalBalls, extras:{wides,noballs,byes,legbyes,total},
+        target, strikerId, nonStrikerId, bowlerId,
+        batters: { <playerId>: {id,name,runs,balls,fours,sixes,out,howOut} },
+        bowlers: { <playerId>: {id,name,balls,runs,wickets,maidens} },
+        timeline: [ {seq, over:"0.1", extra, runs, teamRuns, wicket,
+                     strikerId, bowlerId, ts} ],
+        fallOfWickets: [], closed }
+    ]
+  }
+
+Two things matter here:
+  1. The timeline references players by ID, not name. Names live in the
+     `batters` / `bowlers` maps on the same innings block.
+  2. The scorer already aggregates each batter and bowler. Those are the
+     authoritative scorecard numbers, so we use them rather than recomputing;
+     the timeline is used for what they do not carry (dot balls, over-by-over).
+
+Alias lists are kept so a future scorer change degrades instead of breaking.
 """
 from typing import Any, Dict, List, Optional
 
-# field aliases -> canonical name
-RUNS_KEYS    = ("runs_of_bat", "runsOfBat", "batRuns", "runs", "r")
-EXTRA_KEYS   = ("extra", "extras", "extraRuns")
-ETYPE_KEYS   = ("extraType", "extra_type", "type", "kind")
-WICKET_KEYS  = ("wicket", "isWicket", "is_wicket", "dismissal", "out")
-STRIKER_KEYS = ("striker", "batsman", "batter", "onStrike", "strikerName")
-BOWLER_KEYS  = ("bowler", "bowlerName")
-INN_KEYS     = ("innings", "inning", "inningsNumber", "innNo", "number")
+RUNS_KEYS = ("runs", "runs_of_bat", "runsOfBat", "batRuns", "r")
+TEAMRUNS_KEYS = ("teamRuns", "totalRuns", "ballRuns")
+EXTRA_KEYS = ("extra", "extras", "extraRuns")
+ETYPE_KEYS = ("type", "extraType", "extra_type", "kind")
+WICKET_KEYS = ("wicket", "isWicket", "is_wicket", "dismissal", "out")
+STRIKER_ID_KEYS = ("strikerId", "batsmanId", "batterId", "striker_id")
+BOWLER_ID_KEYS = ("bowlerId", "bowler_id")
+STRIKER_KEYS = ("striker", "batsman", "batter", "strikerName")
+BOWLER_KEYS = ("bowler", "bowlerName")
+INN_NUM_KEYS = ("number", "innings", "inning", "inningsNumber", "innNo")
 BALLLIST_KEYS = ("timeline", "balls", "deliveries", "events", "ballByBall", "log")
 
-ILLEGAL = {"wd", "wide", "wides", "nb", "noball", "no-ball", "noballs"}
+WIDE_T = {"wd", "wide", "wides"}
+NOBALL_T = {"nb", "noball", "no-ball", "noballs"}
+ILLEGAL = WIDE_T | NOBALL_T
 
 
-def _first(d: Dict[str, Any], keys, default=None):
+def _first(d, keys, default=None):
+    if not isinstance(d, dict):
+        return default
     for k in keys:
-        if isinstance(d, dict) and k in d and d[k] is not None:
+        if k in d and d[k] is not None:
             return d[k]
     return default
 
 
-def _name(v) -> Optional[str]:
-    """Player field may be a string, or an object like {name, id}."""
+def _int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _name_of(v) -> Optional[str]:
     if v is None:
         return None
     if isinstance(v, str):
@@ -41,152 +70,187 @@ def _name(v) -> Optional[str]:
     return str(v)
 
 
-def find_ball_lists(payload: Any) -> List[Dict[str, Any]]:
-    """Locate every plausible ball list anywhere in the payload.
-
-    Returns a list of {path, count, sample} so we can pick the best one and so
-    the diagnostic endpoint can show a human what exists.
-    """
-    found: List[Dict[str, Any]] = []
-
-    def looks_like_ball(x) -> bool:
-        if not isinstance(x, dict):
-            return False
-        hits = sum(1 for grp in (RUNS_KEYS, EXTRA_KEYS, WICKET_KEYS, STRIKER_KEYS, BOWLER_KEYS)
-                   if _first(x, grp) is not None)
-        return hits >= 2
-
-    def walk(node, path):
-        if isinstance(node, list):
-            if node and looks_like_ball(node[0]):
-                found.append({"path": path or "(root)", "count": len(node), "sample": node[0]})
-            for i, v in enumerate(node[:3]):
-                walk(v, f"{path}[{i}]")
-        elif isinstance(node, dict):
-            for k, v in node.items():
-                walk(v, f"{path}.{k}" if path else k)
-
-    walk(payload, "")
-    # prefer the longest list found under a known key name
-    found.sort(key=lambda f: (any(k in f["path"] for k in BALLLIST_KEYS), f["count"]), reverse=True)
-    return found
+def player_lookup(inn: Dict[str, Any]) -> Dict[str, str]:
+    """playerId -> display name, from the innings block's batters/bowlers maps."""
+    out: Dict[str, str] = {}
+    for grp in ("batters", "bowlers", "players"):
+        blk = inn.get(grp)
+        if isinstance(blk, dict):
+            for pid, p in blk.items():
+                if isinstance(p, dict) and p.get("name"):
+                    out[str(pid)] = p["name"]
+                elif isinstance(p, str):
+                    out[str(pid)] = p
+        elif isinstance(blk, list):
+            for p in blk:
+                if isinstance(p, dict) and p.get("id") and p.get("name"):
+                    out[str(p["id"])] = p["name"]
+    return out
 
 
-def normalize_ball(ev: Dict[str, Any], fallback_innings: int = 1) -> Dict[str, Any]:
-    """One raw delivery -> canonical ball dict used by the analysis engine."""
-    runs = _first(ev, RUNS_KEYS, 0)
-    try:
-        runs = int(runs)
-    except (TypeError, ValueError):
-        runs = 0
+def normalize_ball(ev: Dict[str, Any], innings: int,
+                   names: Dict[str, str] = None) -> Dict[str, Any]:
+    """One raw delivery -> canonical ball dict."""
+    names = names or {}
+    runs = _int(_first(ev, RUNS_KEYS, 0))
 
-    extra = _first(ev, EXTRA_KEYS, 0)
+    # extras: prefer (teamRuns - runs), which is exact and shape-independent.
+    team_runs = _first(ev, TEAMRUNS_KEYS, None)
+    extra = _first(ev, EXTRA_KEYS, None)
     etype = ""
-    eruns = 0
     if isinstance(extra, dict):
         etype = str(_first(extra, ETYPE_KEYS, "") or "").lower()
-        try:
-            eruns = int(extra.get("runs", extra.get("value", 1)))
-        except (TypeError, ValueError):
-            eruns = 1
-    elif isinstance(extra, (int, float)):
-        eruns = int(extra)
-        etype = str(_first(ev, ETYPE_KEYS, "") or "").lower()
+        ex_from_obj = _int(extra.get("runs", extra.get("value", 1)), 1)
     elif isinstance(extra, str):
         etype = extra.lower()
-        eruns = 1
+        ex_from_obj = 1
+    elif isinstance(extra, (int, float)):
+        etype = str(_first(ev, ETYPE_KEYS, "") or "").lower()
+        ex_from_obj = int(extra)
+    else:
+        ex_from_obj = 0
+
+    if team_runs is not None:
+        extras = max(_int(team_runs) - runs, 0)
+    else:
+        extras = ex_from_obj
 
     is_legal = 0 if etype in ILLEGAL else 1
 
     w = _first(ev, WICKET_KEYS, None)
     if isinstance(w, dict):
-        is_wicket = 1 if (w.get("type") or w.get("kind") or w.get("player")) else 0
-        wtype = w.get("type") or w.get("kind")
-    elif isinstance(w, bool):
-        is_wicket, wtype = (1 if w else 0), None
-    elif isinstance(w, str):
-        is_wicket, wtype = (1 if w and w.lower() not in ("none", "false", "") else 0), w
+        is_wicket = 1
+        wtype = w.get("type") or w.get("kind") or w.get("how")
+    elif isinstance(w, str) and w.lower() not in ("", "none", "false", "null"):
+        is_wicket, wtype = 1, w
+    elif w is True:
+        is_wicket, wtype = 1, None
     else:
-        is_wicket, wtype = (1 if w else 0), None
+        is_wicket, wtype = 0, None
 
-    inn = _first(ev, INN_KEYS, fallback_innings)
-    try:
-        inn = int(inn)
-    except (TypeError, ValueError):
-        inn = fallback_innings
+    sid = _first(ev, STRIKER_ID_KEYS)
+    bid = _first(ev, BOWLER_ID_KEYS)
+    striker = names.get(str(sid)) if sid is not None else None
+    bowler = names.get(str(bid)) if bid is not None else None
+    if striker is None:
+        striker = _name_of(_first(ev, STRIKER_KEYS))
+    if bowler is None:
+        bowler = _name_of(_first(ev, BOWLER_KEYS))
 
-    return {
-        "innings": inn,
-        "runs_of_bat": runs,
-        "extras": eruns,
-        "extra_type": etype,
-        "is_legal": is_legal,
-        "is_wicket": is_wicket,
-        "wicket_type": wtype,
-        "striker": _name(_first(ev, STRIKER_KEYS)),
-        "bowler": _name(_first(ev, BOWLER_KEYS)),
-    }
+    return {"innings": innings, "runs_of_bat": runs, "extras": extras,
+            "extra_type": etype, "is_legal": is_legal, "is_wicket": is_wicket,
+            "wicket_type": wtype, "striker": striker, "bowler": bowler,
+            "striker_id": str(sid) if sid is not None else None,
+            "bowler_id": str(bid) if bid is not None else None}
+
+
+def _cards(inn: Dict[str, Any]):
+    """The scorer's own aggregates -> (batting list, bowling list)."""
+    bats, bowls = [], []
+    b = inn.get("batters")
+    if isinstance(b, dict):
+        for pid, p in b.items():
+            if not isinstance(p, dict):
+                continue
+            bats.append({"id": str(pid), "name": p.get("name") or str(pid),
+                         "runs": _int(p.get("runs")), "balls": _int(p.get("balls")),
+                         "fours": _int(p.get("fours")), "sixes": _int(p.get("sixes")),
+                         "out": bool(p.get("out")), "how_out": p.get("howOut")})
+    w = inn.get("bowlers")
+    if isinstance(w, dict):
+        for pid, p in w.items():
+            if not isinstance(p, dict):
+                continue
+            bowls.append({"id": str(pid), "name": p.get("name") or str(pid),
+                          "balls": _int(p.get("balls")), "runs": _int(p.get("runs")),
+                          "wickets": _int(p.get("wickets")),
+                          "maidens": _int(p.get("maidens"))})
+    return bats, bowls
+
+
+def extract_innings(payload: Any) -> List[Dict[str, Any]]:
+    """Every innings, with its balls and the scorer's own scorecards."""
+    if not isinstance(payload, dict):
+        return []
+    blocks = payload.get("innings")
+    if not isinstance(blocks, list):
+        return []
+
+    teams = payload.get("teams") if isinstance(payload.get("teams"), dict) else {}
+    out = []
+    for blk in blocks:
+        if not isinstance(blk, dict):
+            continue
+        num = _int(_first(blk, INN_NUM_KEYS, 1), 1)
+        names = player_lookup(blk)
+        raw = _first(blk, BALLLIST_KEYS, []) or []
+        balls = [normalize_ball(e, num, names) for e in raw if isinstance(e, dict)]
+        bats, bowls = _cards(blk)
+
+        bat_team = (blk.get("battingTeamName") or blk.get("battingTeam")
+                    or teams.get(blk.get("battingSide"), "") or "")
+        bowl_team = (blk.get("bowlingTeamName") or blk.get("bowlingTeam")
+                     or teams.get(blk.get("bowlingSide"), "") or "")
+
+        out.append({
+            "number": num,
+            "batting_team": bat_team,
+            "bowling_team": bowl_team,
+            "runs": _int(blk.get("runs")),
+            "wickets": _int(blk.get("wickets")),
+            "legal_balls": _int(blk.get("legalBalls")),
+            "extras": blk.get("extras") or {},
+            "target": blk.get("target"),
+            "balls": balls,
+            "batting_card": bats,
+            "bowling_card": bowls,
+        })
+    out.sort(key=lambda i: i["number"])
+    return out
 
 
 def normalize_timeline(payload: Any) -> List[Dict[str, Any]]:
-    """Full match payload -> ordered list of canonical balls (all innings)."""
-    lists = find_ball_lists(payload)
-    if not lists:
-        return []
+    """Flat ordered ball list across all innings (used by the model)."""
+    balls: List[Dict[str, Any]] = []
+    for inn in extract_innings(payload):
+        balls += inn["balls"]
+    return balls
 
-    # If innings blocks each carry their own list, merge them with the right number.
-    inns = payload.get("innings") if isinstance(payload, dict) else None
-    if isinstance(inns, list) and len(inns) > 0 and any(
-            isinstance(b, dict) and any(k in b for k in BALLLIST_KEYS) for b in inns):
-        out: List[Dict[str, Any]] = []
-        for blk in inns:
-            num = _first(blk, INN_KEYS, 1)
-            try:
-                num = int(num)
-            except (TypeError, ValueError):
-                num = 1
-            raw = _first(blk, BALLLIST_KEYS, []) or []
-            out += [normalize_ball(e, num) for e in raw if isinstance(e, dict)]
-        if out:
-            return out
 
-    best = lists[0]
-    node: Any = payload
-    for part in best["path"].replace("(root)", "").split("."):
-        if not part:
-            continue
-        if "[" in part:
-            k, idx = part.split("[")
-            if k:
-                node = node[k]
-            node = node[int(idx.rstrip("]"))]
-        else:
-            node = node[part]
-    return [normalize_ball(e) for e in node if isinstance(e, dict)]
+def match_meta(payload: Any, match_id: str = None) -> Dict[str, Any]:
+    p = payload if isinstance(payload, dict) else {}
+    teams = p.get("teams") if isinstance(p.get("teams"), dict) else {}
+    return {"match_id": match_id or p.get("id"),
+            "status": p.get("status") or "live",
+            "teamA": teams.get("A") or p.get("teamA") or "",
+            "teamB": teams.get("B") or p.get("teamB") or "",
+            "venue": p.get("venue"),
+            "result": p.get("result"),
+            "overs": p.get("overs")}
 
 
 def describe_payload(payload: Any) -> Dict[str, Any]:
-    """Human-readable diagnostic: what does this payload actually contain?"""
-    lists = find_ball_lists(payload)
-    tl = normalize_timeline(payload)
-    per_inn: Dict[int, int] = {}
-    named = 0
-    for b in tl:
-        per_inn[b["innings"]] = per_inn.get(b["innings"], 0) + 1
-        if b["striker"] and b["bowler"]:
-            named += 1
+    """Diagnostic: what did we find, and can the charts be built?"""
+    inns = extract_innings(payload)
+    tl = [b for i in inns for b in i["balls"]]
+    named = sum(1 for b in tl if b["striker"] and b["bowler"])
     return {
-        "top_level_keys": list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__,
-        "ball_lists_found": [{"path": f["path"], "count": f["count"]} for f in lists[:5]],
-        "raw_sample_ball": lists[0]["sample"] if lists else None,
+        "top_level_keys": list(payload.keys()) if isinstance(payload, dict) else str(type(payload)),
+        "meta": match_meta(payload),
+        "innings_found": [
+            {"number": i["number"], "batting_team": i["batting_team"],
+             "bowling_team": i["bowling_team"], "runs": i["runs"],
+             "wickets": i["wickets"], "legal_balls": i["legal_balls"],
+             "balls_in_timeline": len(i["balls"]),
+             "batters_in_card": len(i["batting_card"]),
+             "bowlers_in_card": len(i["bowling_card"])}
+            for i in inns],
         "normalized_total": len(tl),
-        "normalized_per_innings": per_inn,
         "balls_with_player_names": named,
         "normalized_sample": tl[:3],
         "verdict": (
-            "OK - timeline found and players attributed" if named > 0 else
+            "OK - timeline found and players attributed" if named and tl else
             "TIMELINE FOUND but no striker/bowler names - per-player charts will be empty"
             if tl else
-            "NO TIMELINE FOUND - analysis cannot be built from this payload"
-        ),
+            "NO TIMELINE FOUND - analysis cannot be built from this payload"),
     }

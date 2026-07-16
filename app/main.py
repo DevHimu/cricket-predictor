@@ -142,31 +142,6 @@ def make_report(req: ReportReq):
     return report_mod.generate_report(match)
 
 # ── Analysis (cached) ─────────────────────────────────────────────
-def _meta_from(match_json, score_json, match_id):
-    inn_teams = {}
-    inns = match_json.get("innings") if isinstance(match_json, dict) else None
-    if isinstance(inns, list):
-        for blk in inns:
-            try:
-                n = int(blk.get("number") or blk.get("innings") or 0)
-            except (TypeError, ValueError):
-                continue
-            inn_teams[n] = {"batting": blk.get("battingTeam") or blk.get("batting") or "",
-                            "bowling": blk.get("bowlingTeam") or blk.get("bowling") or ""}
-    s = score_json or {}
-    cur = int(s.get("innings") or 1)
-    if cur not in inn_teams and s.get("batting"):
-        inn_teams[cur] = {"batting": s.get("batting"), "bowling": s.get("bowling")}
-    return {"match_id": match_id,
-            "status": (match_json or {}).get("status") or s.get("status") or "live",
-            "teamA": (match_json or {}).get("teamA") or "",
-            "teamB": (match_json or {}).get("teamB") or "",
-            "venue": (match_json or {}).get("venue") or s.get("venue"),
-            "result": (match_json or {}).get("result"),
-            "target": s.get("target"),
-            "innings_teams": inn_teams}
-
-
 @app.get("/analysis/{match_id}")
 def analysis(match_id: str, refresh: bool = False):
     """Full match analysis. Completed matches are served from the cache folder."""
@@ -184,12 +159,12 @@ def analysis(match_id: str, refresh: bool = False):
         s = scorer_client.fetch_json(f"/api/matches/{match_id}/score")
     except Exception:
         s = {}
-    tl = timeline_adapter.normalize_timeline(m)
-    if not tl:
+    inns = timeline_adapter.extract_innings(m)
+    if not inns:
         raise HTTPException(
-            422, "No ball timeline found in the scorer's match payload. "
+            422, "No innings/timeline found in the scorer's match payload. "
                  f"Open /debug/timeline/{match_id} to see what it returned.")
-    out = match_analysis.build_analysis(tl, _meta_from(m, s, match_id))
+    out = match_analysis.build_analysis(inns, timeline_adapter.match_meta(m, match_id))
     out["_cached"] = False
     if out.get("status") == "complete":
         cache_store.put(match_id, out)      # completed matches never change
@@ -210,10 +185,12 @@ def dashboard(match_id: str):
     except Exception as e:
         raise HTTPException(502, f"scorer fetch failed: {e}")
 
-    status = (m or {}).get("status") or s.get("status") or "live"
+    meta = timeline_adapter.match_meta(m, match_id)
+    status = meta["status"] or s.get("status") or "live"
+    meta["status"] = status
     out = {"match_id": match_id, "status": status, "score": s,
-           "teamA": (m or {}).get("teamA"), "teamB": (m or {}).get("teamB"),
-           "result": (m or {}).get("result"), "venue": (m or {}).get("venue")}
+           "teamA": meta["teamA"], "teamB": meta["teamB"],
+           "result": meta["result"], "venue": meta["venue"]}
 
     # ---- analysis (cached once complete) ----
     cached = cache_store.get(match_id) if status == "complete" else None
@@ -221,9 +198,9 @@ def dashboard(match_id: str):
         out["analysis"] = cached
         out["analysis"]["_cached"] = True
     else:
-        tl = timeline_adapter.normalize_timeline(m)
-        if tl:
-            an = match_analysis.build_analysis(tl, _meta_from(m, s, match_id))
+        inns = timeline_adapter.extract_innings(m)
+        if inns:
+            an = match_analysis.build_analysis(inns, meta)
             an["_cached"] = False
             out["analysis"] = an
             if status == "complete":
@@ -231,7 +208,7 @@ def dashboard(match_id: str):
         else:
             out["analysis"] = None
             out["analysis_error"] = (
-                "No ball timeline found in the scorer payload - "
+                "No innings/timeline found in the scorer payload - "
                 f"see /debug/timeline/{match_id}")
 
     # ---- prediction (live matches only) ----
