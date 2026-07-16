@@ -85,13 +85,28 @@ def fetch_json(path: str, timeout: int = 30, retries: int = 1):
                 time.sleep(2)
     raise last
 
-def state_from_match(match_id: str):
-    """Fetch /matches/:id and return everything needed to predict the live ball:
-    (innings, batting_team, bowling_team, venue, target, timeline)."""
-    m = fetch_json(f"/api/matches/{match_id}")
-    s = fetch_json(f"/api/matches/{match_id}/score")   # reliable current-state summary
+def state_from_match(match_id: str, match_json=None, score_json=None):
+    """Fetch /matches/:id and return everything needed to predict the live ball.
+
+    Timeline extraction is delegated to timeline_adapter, which searches the
+    payload for the ball list rather than assuming one field name.
+    """
+    import timeline_adapter
+    m = match_json if match_json is not None else fetch_json(f"/api/matches/{match_id}")
+    s = score_json if score_json is not None else fetch_json(f"/api/matches/{match_id}/score")
     innings = int(s.get("innings", 1))
-    timeline = [ball_from_event(e) for e in _timeline_list(m, innings)]
+    full = timeline_adapter.normalize_timeline(m)
+    timeline = [b for b in full if int(b.get("innings") or 1) == innings]
+    # innings length in legal balls: prefer the live count, else the match setting
+    tb = None
+    if s.get("ballsBowled") is not None and s.get("ballsRemaining") is not None:
+        tb = int(s["ballsBowled"]) + int(s["ballsRemaining"])
+    if not tb and isinstance(m, dict) and m.get("overs"):
+        try:
+            tb = int(m["overs"]) * 6
+        except (TypeError, ValueError):
+            tb = None
     return {"innings": innings, "batting_team": s.get("batting"),
             "bowling_team": s.get("bowling"), "venue": s.get("venue"),
-            "target": s.get("target"), "timeline": timeline, "raw_score": s}
+            "target": s.get("target"), "timeline": timeline,
+            "full_timeline": full, "total_balls": tb or 120, "raw_score": s}
