@@ -168,6 +168,41 @@ def _cards(inn: Dict[str, Any]):
     return bats, bowls
 
 
+def _team_name(v) -> str:
+    """A team may be a plain string, or the full object {id, name, players}.
+
+    The /score endpoint sends strings; /api/matches/:id sends objects. Returning
+    the object into React renders nothing and throws 'Objects are not valid as a
+    React child', so everything is flattened to a name here, once.
+    """
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        return v.get("name") or v.get("teamName") or v.get("id") or ""
+    return str(v)
+
+
+def _result_text(v) -> Optional[str]:
+    """Result may be a string, or an object like {winnerName, margin, text}."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        if v.get("text"):
+            return v["text"]
+        if v.get("description"):
+            return v["description"]
+        win = v.get("winnerName") or _team_name(v.get("winner"))
+        margin, mtype = v.get("margin"), v.get("marginType") or ""
+        if win and margin is not None:
+            return f"{win} won by {margin} {mtype}".strip()
+        return win or None
+    return str(v)
+
+
 def extract_innings(payload: Any) -> List[Dict[str, Any]]:
     """Every innings, with its balls and the scorer's own scorecards."""
     if not isinstance(payload, dict):
@@ -187,10 +222,12 @@ def extract_innings(payload: Any) -> List[Dict[str, Any]]:
         balls = [normalize_ball(e, num, names) for e in raw if isinstance(e, dict)]
         bats, bowls = _cards(blk)
 
-        bat_team = (blk.get("battingTeamName") or blk.get("battingTeam")
-                    or teams.get(blk.get("battingSide"), "") or "")
-        bowl_team = (blk.get("bowlingTeamName") or blk.get("bowlingTeam")
-                     or teams.get(blk.get("bowlingSide"), "") or "")
+        bat_team = (_team_name(blk.get("battingTeamName"))
+                    or _team_name(blk.get("battingTeam"))
+                    or _team_name(teams.get(blk.get("battingSide"))))
+        bowl_team = (_team_name(blk.get("bowlingTeamName"))
+                     or _team_name(blk.get("bowlingTeam"))
+                     or _team_name(teams.get(blk.get("bowlingSide"))))
 
         out.append({
             "number": num,
@@ -222,10 +259,10 @@ def match_meta(payload: Any, match_id: str = None) -> Dict[str, Any]:
     teams = p.get("teams") if isinstance(p.get("teams"), dict) else {}
     return {"match_id": match_id or p.get("id"),
             "status": p.get("status") or "live",
-            "teamA": teams.get("A") or p.get("teamA") or "",
-            "teamB": teams.get("B") or p.get("teamB") or "",
-            "venue": p.get("venue"),
-            "result": p.get("result"),
+            "teamA": _team_name(teams.get("A")) or _team_name(p.get("teamA")),
+            "teamB": _team_name(teams.get("B")) or _team_name(p.get("teamB")),
+            "venue": p.get("venue") if isinstance(p.get("venue"), (str, type(None))) else str(p.get("venue")),
+            "result": _result_text(p.get("result")),
             "overs": p.get("overs")}
 
 

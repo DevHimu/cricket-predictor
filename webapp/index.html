@@ -189,7 +189,12 @@ const RED = '#FF5568',
   BLUE = '#4C8DFF',
   AMBER = '#FFB020',
   CYAN = '#3FC8E4';
-const short = n => (n || '').length > 13 ? (n || '').slice(0, 12) + '.' : n || '';
+/* Coerce anything to a safe renderable string. The scorer sends team names as
+   plain strings on /score but as {id,name,players} objects on /api/matches/:id,
+   and rendering an object throws React error #31 (blank page). Never render a
+   raw API value - pass it through txt(). */
+const txt = v => v == null ? '' : typeof v === 'string' || typeof v === 'number' ? String(v) : v.name || v.text || v.teamName || v.id || '';
+const short = n => (txt(n) || '').length > 13 ? txt(n).slice(0, 12) + '.' : txt(n);
 
 /* ═══════════ CHART PRIMITIVES (hand-rolled SVG, no chart library) ═══════════ */
 
@@ -473,7 +478,7 @@ function InningsCharts({
   if (!inn) return null;
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "chart"
-  }, /*#__PURE__*/React.createElement("h3", null, "Batting - ", inn.batting_team || 'Innings ' + inn.number), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h3", null, "Batting - ", txt(inn.batting_team) || 'Innings ' + inn.number), /*#__PURE__*/React.createElement("div", {
     className: "sub"
   }, "Runs scored (balls faced)"), /*#__PURE__*/React.createElement(HBars, {
     items: inn.batting,
@@ -482,7 +487,7 @@ function InningsCharts({
     fmt: r => r.runs + ' (' + r.balls + ')'
   })), /*#__PURE__*/React.createElement("div", {
     className: "chart"
-  }, /*#__PURE__*/React.createElement("h3", null, "Bowling - ", inn.bowling_team || ''), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h3", null, "Bowling - ", txt(inn.bowling_team)), /*#__PURE__*/React.createElement("div", {
     className: "sub"
   }, "Wickets taken, with runs conceded and economy"), /*#__PURE__*/React.createElement(HBars, {
     items: inn.bowling,
@@ -525,7 +530,7 @@ function BoundaryChart({
     className: "chart"
   }, /*#__PURE__*/React.createElement("h3", null, "Boundary % ", tag), /*#__PURE__*/React.createElement("div", {
     className: "sub"
-  }, inn.batting_team || '', " - runs from 4s and 6s"), /*#__PURE__*/React.createElement(Donut, {
+  }, txt(inn.batting_team), " - runs from 4s and 6s"), /*#__PURE__*/React.createElement(Donut, {
     value: inn.boundary_pct,
     color: color,
     caption: "of team runs"
@@ -555,7 +560,7 @@ function BestPlayers({
     className: "bname"
   }, bb.name), /*#__PURE__*/React.createElement("div", {
     className: "bteam"
-  }, bb.team, " · innings ", bb.innings), /*#__PURE__*/React.createElement("div", {
+  }, txt(bb.team), " · innings ", bb.innings), /*#__PURE__*/React.createElement("div", {
     className: "bstat"
   }, /*#__PURE__*/React.createElement("b", null, bb.runs), " off ", /*#__PURE__*/React.createElement("b", null, bb.balls), " \xA0|\xA0 SR ", /*#__PURE__*/React.createElement("b", null, bb.sr), "\xA0|\xA0 ", bb.fours, "x4 ", bb.sixes, "x6")), bw && /*#__PURE__*/React.createElement("div", {
     className: "bestcard"
@@ -565,7 +570,7 @@ function BestPlayers({
     className: "bname"
   }, bw.name), /*#__PURE__*/React.createElement("div", {
     className: "bteam"
-  }, bw.team, " · innings ", bw.innings), /*#__PURE__*/React.createElement("div", {
+  }, txt(bw.team), " · innings ", bw.innings), /*#__PURE__*/React.createElement("div", {
     className: "bstat"
   }, /*#__PURE__*/React.createElement("b", null, bw.wickets), "-", /*#__PURE__*/React.createElement("b", null, bw.runs), " (", bw.overs, " ov) \xA0|\xA0 econ ", /*#__PURE__*/React.createElement("b", null, bw.econ), " \xA0|\xA0 dots ", /*#__PURE__*/React.createElement("b", null, bw.dot_pct, "%"))));
 }
@@ -579,12 +584,12 @@ function Analysis({
   if (i1) series.push({
     overs: i1.overs,
     color: RED,
-    label: 'Inn 1 - ' + (i1.batting_team || '')
+    label: 'Inn 1 - ' + txt(i1.batting_team)
   });
   if (i2) series.push({
     overs: i2.overs,
     color: BLUE,
-    label: 'Inn 2 - ' + (i2.batting_team || '')
+    label: 'Inn 2 - ' + txt(i2.batting_team)
   });
   if (!an.has_player_names) return /*#__PURE__*/React.createElement("div", {
     className: "err"
@@ -702,7 +707,7 @@ function MatchView({
     p = d.prediction || {};
   const isChase = (s.innings || 1) === 2;
   const done = d.status === 'complete';
-  const wp = p.win_probability ? p.win_probability[s.batting] : null;
+  const wp = p.win_probability ? p.win_probability[txt(s.batting)] : null;
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
     className: "back",
     onClick: onBack
@@ -718,15 +723,15 @@ function MatchView({
     className: "rl"
   }, "Result"), /*#__PURE__*/React.createElement("div", {
     className: "rt"
-  }, d.result)), /*#__PURE__*/React.createElement("div", {
+  }, txt(d.result))), /*#__PURE__*/React.createElement("div", {
     className: "board"
   }, /*#__PURE__*/React.createElement("div", {
     className: "venue"
-  }, d.teamA, " v ", d.teamB, d.venue ? ' - ' + d.venue : ''), /*#__PURE__*/React.createElement("div", {
+  }, txt(d.teamA), " v ", txt(d.teamB), d.venue ? ' - ' + txt(d.venue) : ''), /*#__PURE__*/React.createElement("div", {
     className: "scoreline"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "batlabel"
-  }, s.batting, " batting"), /*#__PURE__*/React.createElement("div", {
+  }, txt(s.batting), " batting"), /*#__PURE__*/React.createElement("div", {
     className: "bigscore"
   }, s.runs || 0, /*#__PURE__*/React.createElement("span", null, "/", s.wickets || 0)), /*#__PURE__*/React.createElement("div", {
     className: "scoremeta"
@@ -737,7 +742,7 @@ function MatchView({
     style: {
       color: '#8FA3C4'
     }
-  }, s.bowling, " bowling"), isChase && s.required ? /*#__PURE__*/React.createElement("div", {
+  }, txt(s.bowling), " bowling"), isChase && s.required ? /*#__PURE__*/React.createElement("div", {
     className: "need"
   }, "need ", s.required.runs, " off ", s.required.balls) : /*#__PURE__*/React.createElement("div", {
     className: "scoremeta"
@@ -755,7 +760,7 @@ function MatchView({
     className: "dt"
   }), "Striker"), /*#__PURE__*/React.createElement("div", {
     className: "pname"
-  }, s.striker ? s.striker.name : '-'), /*#__PURE__*/React.createElement("div", {
+  }, s.striker ? txt(s.striker.name) : '-'), /*#__PURE__*/React.createElement("div", {
     className: "pstat"
   }, /*#__PURE__*/React.createElement("b", null, s.striker ? s.striker.runs : 0), " (", s.striker ? s.striker.balls : 0, ")", s.striker && s.striker.balls > 0 ? ' - SR ' + (s.striker.runs / s.striker.balls * 100).toFixed(0) : '')), /*#__PURE__*/React.createElement("div", {
     className: "player"
@@ -763,7 +768,7 @@ function MatchView({
     className: "role"
   }, "Non-striker"), /*#__PURE__*/React.createElement("div", {
     className: "pname"
-  }, s.nonStriker ? s.nonStriker.name : '-'), /*#__PURE__*/React.createElement("div", {
+  }, s.nonStriker ? txt(s.nonStriker.name) : '-'), /*#__PURE__*/React.createElement("div", {
     className: "pstat"
   }, /*#__PURE__*/React.createElement("b", null, s.nonStriker ? s.nonStriker.runs : 0), " (", s.nonStriker ? s.nonStriker.balls : 0, ")", s.nonStriker && s.nonStriker.balls > 0 ? ' - SR ' + (s.nonStriker.runs / s.nonStriker.balls * 100).toFixed(0) : ''))), !done && s.bowler && /*#__PURE__*/React.createElement("div", {
     className: "bowlnow"
@@ -777,7 +782,7 @@ function MatchView({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "pname"
-  }, s.bowler.name), /*#__PURE__*/React.createElement("div", {
+  }, txt(s.bowler.name)), /*#__PURE__*/React.createElement("div", {
     className: "pstat"
   }, s.bowler.overs, " ov \xA0|\xA0", /*#__PURE__*/React.createElement("b", null, s.bowler.wickets, "-", s.bowler.runs)))), !done && (p.projected_score != null || wp != null) && /*#__PURE__*/React.createElement("div", {
     className: "predbox"
@@ -800,7 +805,7 @@ function MatchView({
     className: "wprow"
   }, /*#__PURE__*/React.createElement("div", {
     className: "wpteam"
-  }, s.batting, " to win"), /*#__PURE__*/React.createElement("div", {
+  }, txt(s.batting), " to win"), /*#__PURE__*/React.createElement("div", {
     className: "wppct",
     style: {
       color: wp >= 0.5 ? AMBER : CYAN
@@ -819,12 +824,12 @@ function MatchView({
     }
   }, 1 - wp > 0.16 ? pct(1 - wp) + '%' : '')), /*#__PURE__*/React.createElement("div", {
     className: "wpfoot"
-  }, /*#__PURE__*/React.createElement("span", null, s.batting), /*#__PURE__*/React.createElement("span", null, s.bowling)), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, txt(s.batting)), /*#__PURE__*/React.createElement("span", null, txt(s.bowling))), /*#__PURE__*/React.createElement("div", {
     className: "projnote",
     style: {
       marginTop: '9px'
     }
-  }, wp >= 0.5 ? s.batting : s.bowling, " favoured", p.innings_balls && p.innings_balls !== 120 ? ' - short format, model is outside its training range' : ''))), done && d.analysis && /*#__PURE__*/React.createElement(BestPlayers, {
+  }, txt(wp >= 0.5 ? s.batting : s.bowling), " favoured", p.innings_balls && p.innings_balls !== 120 ? ' - short format, model is outside its training range' : ''))), done && d.analysis && /*#__PURE__*/React.createElement(BestPlayers, {
     an: d.analysis
   }), d.analysis_error ? /*#__PURE__*/React.createElement("div", {
     className: "err"
@@ -869,14 +874,14 @@ function Home({
     const cur = inns[inns.length - 1] || {};
     return {
       id: m.id,
-      teamA: m.teamA || 'Team A',
-      teamB: m.teamB || 'Team B',
-      venue: m.venue || '',
+      teamA: txt(m.teamA) || 'Team A',
+      teamB: txt(m.teamB) || 'Team B',
+      venue: txt(m.venue),
       status: m.status,
-      result: m.result,
+      result: txt(m.result),
       score: cur.runs != null ? cur.runs + '/' + cur.wickets : '',
-      overs: cur.overs || '',
-      batting: cur.battingTeam || ''
+      overs: txt(cur.overs),
+      batting: txt(cur.battingTeam)
     };
   };
   const all = ms.map(norm);
